@@ -27,6 +27,25 @@ function getProvider() {
   return p?.isPhantom ? p : null;
 }
 
+/**
+ * The extension injects its provider asynchronously, sometimes after the app
+ * has already mounted. Poll briefly so a click that lands early still finds it.
+ */
+function waitForProvider(timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const found = getProvider();
+    if (found) return resolve(found);
+    const started = Date.now();
+    const id = setInterval(() => {
+      const p = getProvider();
+      if (p || Date.now() - started > timeoutMs) {
+        clearInterval(id);
+        resolve(p);
+      }
+    }, 150);
+  });
+}
+
 export function shortAddress(base58, lead = 4, tail = 4) {
   if (!base58) return '';
   return `${base58.slice(0, lead)}…${base58.slice(-tail)}`;
@@ -46,11 +65,25 @@ export function useWallet(onEvent) {
     [onEvent],
   );
 
-  // Detect Phantom, wire its account events, and restore a prior session.
+  // Detect Phantom (allowing for late injection), wire its account events,
+  // and restore a prior session.
   useEffect(() => {
-    const provider = getProvider();
-    setInstalled(!!provider);
-    if (!provider) return;
+    let cleanup = () => {};
+    let cancelled = false;
+
+    waitForProvider().then((provider) => {
+      if (cancelled) return;
+      setInstalled(!!provider);
+      if (!provider) return;
+      cleanup = attach(provider);
+    });
+
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+
+    function attach(provider) {
 
     const onConnect = (pk) => setAddress(pk?.toBase58?.() ?? provider.publicKey?.toBase58() ?? null);
     const onDisconnect = () => {
@@ -75,13 +108,14 @@ export function useWallet(onEvent) {
       provider.off('disconnect', onDisconnect);
       provider.off('accountChanged', onAccountChanged);
     };
+    }
   }, []);
 
   const connect = useCallback(async () => {
-    const provider = getProvider();
+    const provider = (await waitForProvider()) || getProvider();
     if (!provider) {
       window.open('https://phantom.app/', '_blank', 'noopener,noreferrer');
-      emit('error', 'Phantom not found — install it to connect.');
+      emit('error', 'Phantom not found — install the Phantom extension, then reload.');
       return;
     }
     if (address) return;
