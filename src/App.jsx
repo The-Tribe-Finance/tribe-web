@@ -22,6 +22,7 @@ import {
   usdCompact,
 } from './domain';
 import { Nav, Toast } from './ui';
+import { useWallet, shortAddress } from './wallet';
 import Landing from './screens/Landing';
 import Portfolio from './screens/Portfolio';
 import Governance from './screens/Governance';
@@ -57,7 +58,16 @@ export default function App() {
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  const vals = useDerived(state, patch, showToast);
+  // Real Phantom wallet. Its lifecycle events surface through the same toast.
+  const wallet = useWallet((e) => showToast(e.message));
+
+  // Keep the mock state's connection flag in sync with the real wallet, so the
+  // screens that gate on `walletConnected` continue to work unchanged.
+  useEffect(() => {
+    patch({ walletConnected: wallet.connected });
+  }, [wallet.connected, patch]);
+
+  const vals = useDerived(state, patch, showToast, wallet);
 
   const screens = {
     home: Landing,
@@ -74,18 +84,28 @@ export default function App() {
       <Nav
         tab={state.tab}
         setTab={(tab) => patch({ tab })}
-        walletLabel={state.walletConnected ? '0x7f…3a2b' : 'Connect Wallet'}
-        onConnect={() => {
-          if (state.walletConnected) return;
-          patch({ walletConnected: true });
-          showToast('Wallet connected — 0x7f…3a2b');
-        }}
+        walletLabel={
+          wallet.connected
+            ? shortAddress(wallet.address)
+            : wallet.connecting
+              ? 'Connecting…'
+              : 'Connect Wallet'
+        }
+        connected={wallet.connected}
+        onConnect={wallet.connect}
+        onDisconnect={wallet.disconnect}
       />
 
       {isLanding ? (
         <Screen {...vals} />
       ) : (
-        <main style={{ maxWidth: 1180, margin: '0 auto', padding: '0 32px' }}>
+        <main
+          style={{
+            maxWidth: 1180,
+            margin: '0 auto',
+            padding: `0 clamp(16px, 4vw, 32px)`,
+          }}
+        >
           <Screen {...vals} />
         </main>
       )}
@@ -100,7 +120,7 @@ export default function App() {
  * Port of the design component's renderVals(): turns raw state into every
  * formatted value and handler the screens render.
  */
-function useDerived(s, patch, showToast) {
+function useDerived(s, patch, showToast, wallet) {
   return useMemo(() => {
     const setTab = (tab) => () => patch({ tab });
 
@@ -465,9 +485,18 @@ function useDerived(s, patch, showToast) {
 
     // ---- deposit / redeem ----
     const depAmt = parseFloat(s.depositAmt) || 0;
-    const depositDisabled = !(depAmt > 0 && depAmt <= s.walletUsdc);
-    const confirmDeposit = () => {
-      if (depositDisabled) return;
+    const walletConnected = !!wallet?.connected;
+    const depositDisabled = !(depAmt > 0 && depAmt <= s.walletUsdc) || !walletConnected;
+    const confirmDeposit = async () => {
+      if (depAmt <= 0 || depAmt > s.walletUsdc) return;
+      if (!walletConnected) {
+        showToast('Connect your Phantom wallet to deposit.');
+        return;
+      }
+      // Real on-chain step: Phantom signs and the transaction is sent to devnet.
+      // The mock ledger only advances once the transaction confirms.
+      const sig = await wallet.signAndSend({ amountUsd: usd(depAmt) });
+      if (!sig) return;
       const mint = depAmt / sharePrice;
       patch((cur) => ({
         userShares: cur.userShares + mint,
@@ -628,6 +657,10 @@ function useDerived(s, patch, showToast) {
         showToast('You’ll vote on every proposal yourself. Delegate anytime from Analysts.');
       },
       closeDelegatePrompt: () => patch({ delegatePrompt: false }),
+
+      // wallet
+      walletConnected,
+      walletAddress: wallet?.address ?? null,
     };
-  }, [s, patch, showToast]);
+  }, [s, patch, showToast, wallet]);
 }

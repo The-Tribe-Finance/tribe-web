@@ -5,3 +5,6 @@ dist
 .env
 .env.*
 !.env.example
+
+# CodeGraph index (local, do not commit)
+.codegraph/

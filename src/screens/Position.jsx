@@ -1,4 +1,5 @@
 import { C, Card, HoverButton, SectionHead } from '../ui';
+import { useIsMobile } from '../useMediaQuery';
 
 const INPUT = {
   width: '100%',
@@ -26,6 +27,7 @@ const NOTES = [
 
 export default function Position(v) {
   const { state, patch, isUsdc } = v;
+  const isMobile = useIsMobile();
 
   return (
     <section style={{ padding: '40px 0 90px' }}>
@@ -38,7 +40,7 @@ export default function Position(v) {
         </div>
       </SectionHead>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, alignItems: 'start' }}>
         <Card style={{ padding: 26 }}>
           <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 900 }}>Deposit</h3>
           <p style={{ color: C.muted, fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.6 }}>
@@ -210,7 +212,7 @@ export default function Position(v) {
         </Card>
       </div>
 
-      <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16 }}>
         {NOTES.map(([title, body]) => (
           <Card key={title} style={{ padding: '20px 22px', fontSize: 13 }}>
             <div style={{ fontWeight: 900, color: C.green, marginBottom: 6 }}>{title}</div>

@@ -1,8 +1,11 @@
 import { EXECUTED_COUNT, STEPS } from '../domain';
 import { CommunityScene, Icon } from '../icons';
 import { C, HoverButton } from '../ui';
+import { useIsMobile, useIsTablet } from '../useMediaQuery';
 
 const WRAP = { maxWidth: 1180, margin: '0 auto' };
+// Horizontal page padding shrinks on small screens.
+const PAD_X = 'clamp(16px, 4vw, 32px)';
 
 export default function Landing(v) {
   return (
@@ -20,19 +23,28 @@ export default function Landing(v) {
 }
 
 function Hero({ vaultName, navFmt, topHoldings, ownershipFmt, userValueFmt, userPnlFmt, goPosition, goAnalysts }) {
+  const isTablet = useIsTablet();
   return (
     <div
       style={{
         ...WRAP,
-        padding: '56px 32px 40px',
+        padding: `clamp(32px, 6vw, 56px) ${PAD_X} 40px`,
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 48,
+        gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr',
+        gap: isTablet ? 32 : 48,
         alignItems: 'center',
       }}
     >
       <div>
-        <h1 style={{ margin: '0 0 18px', fontSize: 52, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.06 }}>
+        <h1
+          style={{
+            margin: '0 0 18px',
+            fontSize: 'clamp(34px, 6vw, 52px)',
+            fontWeight: 900,
+            letterSpacing: '-0.02em',
+            lineHeight: 1.06,
+          }}
+        >
           Invest together.
           <br />
           <span style={{ color: C.greenMid }}>Grow together.</span>
@@ -141,8 +153,8 @@ function Hero({ vaultName, navFmt, topHoldings, ownershipFmt, userValueFmt, user
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14 }}>
-          <div style={{ background: C.cream, borderRadius: 14, padding: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 14 }}>
+          <div style={{ background: C.cream, borderRadius: 14, padding: 16, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: C.muted }}>Portfolio Performance</span>
               <span style={{ fontSize: 10.5, color: C.soft }}>All Time</span>
@@ -219,12 +231,14 @@ function SolanaMark() {
 }
 
 function HowItWorks() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   return (
-    <div style={{ ...WRAP, padding: '44px 32px 24px' }}>
+    <div style={{ ...WRAP, padding: `44px ${PAD_X} 24px` }}>
       <h2
         style={{
           margin: '0 0 32px',
-          fontSize: 30,
+          fontSize: 'clamp(24px, 4vw, 30px)',
           fontWeight: 900,
           display: 'flex',
           alignItems: 'center',
@@ -236,7 +250,13 @@ function HowItWorks() {
         How Tribe Works
         <Icon name="arrowL" size={26} />
       </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 18 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
+          gap: 18,
+        }}
+      >
         {STEPS.map((st) => (
           <div key={st.n} style={{ textAlign: 'center' }}>
             <span
@@ -282,7 +302,9 @@ function HowItWorks() {
   );
 }
 
-function BandCell({ icon, value, label, note, noteColor, last }) {
+function BandCell({ icon, value, label, note, noteColor, cols = 4, idx = 0 }) {
+  const endOfRow = (idx + 1) % cols === 0;
+  const lastRow = idx >= Math.floor((4 - 1) / cols) * cols;
   return (
     <div
       style={{
@@ -290,7 +312,8 @@ function BandCell({ icon, value, label, note, noteColor, last }) {
         display: 'flex',
         gap: 13,
         alignItems: 'center',
-        borderRight: last ? undefined : '1px solid rgba(255,255,255,.14)',
+        borderRight: endOfRow ? undefined : '1px solid rgba(255,255,255,.14)',
+        borderBottom: lastRow ? undefined : '1px solid rgba(255,255,255,.14)',
       }}
     >
       <span
@@ -317,9 +340,12 @@ function BandCell({ icon, value, label, note, noteColor, last }) {
 }
 
 function StatBand({ navFmt, analystPoolFmt }) {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const cols = isMobile ? 1 : isTablet ? 2 : 4;
   return (
-    <div style={{ ...WRAP, padding: '44px 32px 12px' }}>
-      <h2 style={{ margin: '0 0 16px', fontSize: 30, fontWeight: 900, letterSpacing: '-0.01em' }}>
+    <div style={{ ...WRAP, padding: `44px ${PAD_X} 12px` }}>
+      <h2 style={{ margin: '0 0 16px', fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 900, letterSpacing: '-0.01em' }}>
         Tribe by the numbers
       </h2>
       <div
@@ -328,13 +354,13 @@ function StatBand({ navFmt, analystPoolFmt }) {
           borderRadius: 22,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
           boxShadow: '0 18px 44px rgba(56,48,31,.14)',
         }}
       >
-        <BandCell icon="totem" value={navFmt} label="Total Value Locked" note="▲ 4.8% (30D)" noteColor="#a7d494" />
-        <BandCell icon="people3" value="3,214" label="Members" note="▲ 8.32% (30D)" noteColor="#a7d494" />
-        <BandCell icon="target" value={EXECUTED_COUNT} label="Proposals Executed" note="All-time" />
+        <BandCell icon="totem" value={navFmt} label="Total Value Locked" note="▲ 4.8% (30D)" noteColor="#a7d494" cols={cols} idx={0} />
+        <BandCell icon="people3" value="3,214" label="Members" note="▲ 8.32% (30D)" noteColor="#a7d494" cols={cols} idx={1} />
+        <BandCell icon="target" value={EXECUTED_COUNT} label="Proposals Executed" note="All-time" cols={cols} idx={2} />
         <BandCell
           icon="scroll"
           value={
@@ -345,7 +371,8 @@ function StatBand({ navFmt, analystPoolFmt }) {
           }
           label="Analyst rewards pool"
           note="Split by voting power"
-          last
+          cols={cols}
+          idx={3}
         />
       </div>
     </div>
@@ -353,15 +380,16 @@ function StatBand({ navFmt, analystPoolFmt }) {
 }
 
 function TwoWays({ analystPoolFmt, goPosition, goAnalysts }) {
+  const isMobile = useIsMobile();
   return (
-    <div style={{ ...WRAP, padding: '40px 32px 8px' }}>
-      <h2 style={{ margin: '0 0 6px', fontSize: 30, fontWeight: 900, letterSpacing: '-0.01em' }}>
+    <div style={{ ...WRAP, padding: `40px ${PAD_X} 8px` }}>
+      <h2 style={{ margin: '0 0 6px', fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 900, letterSpacing: '-0.01em' }}>
         Two ways to take part
       </h2>
       <p style={{ margin: '0 0 24px', fontSize: 14, color: C.muted, maxWidth: 560 }}>
         Bring capital, bring conviction, or both. Tribe rewards each on its own terms.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
         <div
           style={{
             background: '#fff',
@@ -464,16 +492,18 @@ function TwoWays({ analystPoolFmt, goPosition, goAnalysts }) {
 }
 
 function RewardsExplainer({ poolMgmtFmt, poolPerfFmt, analystPoolFmt }) {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   return (
-    <div style={{ ...WRAP, padding: '24px 32px 8px' }}>
+    <div style={{ ...WRAP, padding: `24px ${PAD_X} 8px` }}>
       <div
         style={{
           background: C.sand,
           border: `1px solid ${C.line}`,
           borderRadius: 20,
-          padding: 30,
+          padding: 'clamp(20px, 4vw, 30px)',
           display: 'grid',
-          gridTemplateColumns: '1.1fr 1fr 1fr 1fr',
+          gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : '1.1fr 1fr 1fr 1fr',
           gap: 24,
           alignItems: 'center',
         }}
@@ -506,13 +536,15 @@ function RewardsExplainer({ poolMgmtFmt, poolPerfFmt, analystPoolFmt }) {
 }
 
 function FeesAndCta({ goPosition, goAnalysts }) {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   return (
     <div
       style={{
         ...WRAP,
-        padding: '24px 32px',
+        padding: `24px ${PAD_X}`,
         display: 'grid',
-        gridTemplateColumns: '1.5fr 1fr',
+        gridTemplateColumns: isTablet ? '1fr' : '1.5fr 1fr',
         gap: 16,
         alignItems: 'stretch',
       }}
@@ -522,10 +554,10 @@ function FeesAndCta({ goPosition, goAnalysts }) {
           background: C.sand,
           border: `1px solid ${C.line}`,
           borderRadius: 20,
-          padding: 30,
+          padding: 'clamp(20px, 4vw, 30px)',
           display: 'grid',
-          gridTemplateColumns: '1fr auto auto auto',
-          gap: 30,
+          gridTemplateColumns: isMobile ? '1fr' : '1fr auto auto auto',
+          gap: isMobile ? 18 : 30,
           alignItems: 'center',
         }}
       >
@@ -666,7 +698,7 @@ function SocialLink({ href, brandColor, icon, name, meta }) {
 
 function Community() {
   return (
-    <div style={{ ...WRAP, padding: '40px 32px 8px' }}>
+    <div style={{ ...WRAP, padding: `40px ${PAD_X} 8px` }}>
       <div
         style={{
           position: 'relative',
@@ -731,15 +763,16 @@ const FOOTER_COLS = [
 ];
 
 function Footer() {
+  const isMobile = useIsMobile();
   return (
     <footer style={{ borderTop: `1px solid ${C.line}`, background: C.sand, marginTop: 40 }}>
       <div
         style={{
           ...WRAP,
-          padding: '36px 32px',
+          padding: `36px ${PAD_X}`,
           display: 'grid',
-          gridTemplateColumns: '1.4fr 1fr 1fr 1fr',
-          gap: 32,
+          gridTemplateColumns: isMobile ? '1fr 1fr' : '1.4fr 1fr 1fr 1fr',
+          gap: isMobile ? 24 : 32,
           fontSize: 13,
         }}
       >

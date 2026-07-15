@@ -1,6 +1,7 @@
 import { STATUS_META } from '../domain';
 import { Icon } from '../icons';
-import { C, Card, HoverButton, SectionHead } from '../ui';
+import { C, Card, HoverButton, SectionHead, ScrollX } from '../ui';
+import { useIsMobile, useIsTablet } from '../useMediaQuery';
 
 export default function Delegation(v) {
   return (
@@ -12,6 +13,8 @@ export default function Delegation(v) {
 
 function AnalystList(v) {
   const { selfPanel } = v;
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
 
   return (
     <>
@@ -22,7 +25,14 @@ function AnalystList(v) {
         </p>
       </SectionHead>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
         <div style={{ background: C.green, borderRadius: 18, padding: '22px 24px', color: C.cream }}>
           <div
             style={{
@@ -87,7 +97,15 @@ function AnalystList(v) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 16, marginBottom: 20, alignItems: 'stretch' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isTablet ? '1fr' : '1.1fr 1fr',
+          gap: 16,
+          marginBottom: 20,
+          alignItems: 'stretch',
+        }}
+      >
         <Card style={{ padding: '22px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Analyst rewards pool</h3>
@@ -301,6 +319,13 @@ function Metric({ label, value, color, small }) {
 }
 
 function AnalystRow({ a }) {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const cols = isMobile
+    ? 'repeat(2, 1fr)'
+    : isTablet
+      ? '1fr'
+      : '230px repeat(5, 1fr) 130px';
   return (
     <div
       onClick={a.openDetail}
@@ -310,13 +335,13 @@ function AnalystRow({ a }) {
         borderRadius: 18,
         padding: '22px 24px',
         display: 'grid',
-        gridTemplateColumns: '230px repeat(5, 1fr) 130px',
+        gridTemplateColumns: cols,
         gap: 16,
         alignItems: 'center',
         cursor: 'pointer',
       }}
     >
-      <div>
+      <div style={{ gridColumn: isTablet ? '1 / -1' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span
             style={{
@@ -362,7 +387,13 @@ function AnalystRow({ a }) {
       <Metric label="Max Drawdown" value={a.drawdown} color={C.down} />
 
       <div
-        style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          alignItems: 'stretch',
+          gridColumn: isMobile ? '1 / -1' : undefined,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <DelegateButton a={a} />
@@ -376,6 +407,8 @@ function AnalystRow({ a }) {
 }
 
 function AnalystDetail({ ad }) {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   return (
     <div>
       <button
@@ -447,7 +480,7 @@ function AnalystDetail({ ad }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(6, 1fr)',
+            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : isTablet ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)',
             gap: 14,
             marginTop: 20,
             paddingTop: 20,
@@ -469,7 +502,15 @@ function AnalystDetail({ ad }) {
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isTablet ? '1fr' : '1fr 1fr',
+          gap: 16,
+          marginTop: 16,
+          alignItems: 'start',
+        }}
+      >
         <Card>
           <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 900 }}>Investment history</h3>
           {ad.history.map((h) => (

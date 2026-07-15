@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CHART_RANGES, HWM, tvlSeries, usd } from '../domain';
-import { C, Card, SectionHead, Stat } from '../ui';
+import { C, Card, SectionHead, Stat, ScrollX } from '../ui';
+import { useIsMobile, useIsTablet } from '../useMediaQuery';
 
 const W = 560;
 const Y_TOP = 24;
@@ -33,6 +34,8 @@ export default function Portfolio(v) {
   const { state, patch, vaultName, navFmt, sharePriceFmt, userValueFmt, sharesFmt, ownershipFmt } = v;
   const { treasuryFmt, treasuryPctFmt, tokenRows, allocation, allocActive, allocLeave, executions } = v;
   const [hover, setHover] = useState(null);
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
 
   const range = state.chartRange;
   const chart = useChart(v.NAV, range);
@@ -54,7 +57,13 @@ export default function Portfolio(v) {
         </p>
       </SectionHead>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+          gap: 16,
+        }}
+      >
         <Stat label="Total Value Locked" value={navFmt} sub="▲ +4.8% this month" subColor={C.up} />
         <Stat label="NAV / share" value={sharePriceFmt} sub={`High-water mark ${HWM.toFixed(3)}`} />
         <Stat
@@ -66,7 +75,14 @@ export default function Portfolio(v) {
         <Stat label="Cash reserve" value={treasuryFmt} sub={`${treasuryPctFmt} in USDC`} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 1fr', gap: 16, marginTop: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isTablet ? '1fr' : '1.45fr 1fr',
+          gap: 16,
+          marginTop: 16,
+        }}
+      >
         <Card>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Total Value Locked</h3>
@@ -287,6 +303,7 @@ function HoldingsTable({ rows, onPropose }) {
         </button>
       </div>
 
+      <ScrollX minWidth={720}>
       <div
         style={{
           display: 'grid',
@@ -353,6 +370,7 @@ function HoldingsTable({ rows, onPropose }) {
           <span style={{ textAlign: 'right', fontWeight: 800, color: r.pnlColor }}>{r.pnlFmt}</span>
         </div>
       ))}
+      </ScrollX>
     </Card>
   );
 }
@@ -367,6 +385,7 @@ function Executions({ rows }) {
         Routed via <span style={{ color: C.green, fontWeight: 800 }}>Jupiter Aggregator</span> on Solana
       </div>
 
+      <ScrollX minWidth={640}>
       <div
         style={{
           display: 'grid',
@@ -419,6 +438,7 @@ function Executions({ rows }) {
           <span style={{ color: C.soft }}>{e.date}</span>
         </div>
       ))}
+      </ScrollX>
     </Card>
   );
 }

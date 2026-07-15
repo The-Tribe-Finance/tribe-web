@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from './icons';
+import { useIsMobile, useIsTablet } from './useMediaQuery';
 
 export const C = {
   cream: '#faf6ec',
@@ -87,7 +88,57 @@ const TABS = [
   ['position', 'My Position'],
 ];
 
-export function Nav({ tab, setTab, walletLabel, onConnect }) {
+function TabButton({ tabKey, label, tab, setTab, onNavigate }) {
+  const active = tab === tabKey;
+  return (
+    <button
+      onClick={() => {
+        setTab(tabKey);
+        onNavigate?.();
+      }}
+      style={{
+        border: 'none',
+        cursor: 'pointer',
+        font: 'inherit',
+        fontSize: 14,
+        fontWeight: 700,
+        padding: '8px 15px',
+        borderRadius: 999,
+        textAlign: 'left',
+        background: active ? C.sage : 'transparent',
+        color: active ? C.green : C.muted,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function Nav({ tab, setTab, walletLabel, connected, onConnect, onDisconnect }) {
+  const isTablet = useIsTablet();
+  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const walletBtn = (
+    <HoverButton
+      onClick={connected ? onDisconnect : onConnect}
+      hoverBg={connected ? C.down : C.greenDark}
+      title={connected ? 'Click to disconnect' : 'Connect Phantom'}
+      style={{
+        border: 'none',
+        fontSize: isMobile ? 13 : 14,
+        fontWeight: 800,
+        color: C.cream,
+        background: C.green,
+        padding: isMobile ? '9px 16px' : '10px 22px',
+        borderRadius: 999,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {walletLabel}
+    </HoverButton>
+  );
+
   return (
     <nav
       style={{
@@ -96,15 +147,19 @@ export function Nav({ tab, setTab, walletLabel, onConnect }) {
         zIndex: 20,
         display: 'flex',
         alignItems: 'center',
-        gap: 24,
-        padding: '12px 40px',
+        gap: isMobile ? 12 : 24,
+        padding: isMobile ? '10px 18px' : '12px 40px',
         background: 'rgba(250,246,236,.94)',
         backdropFilter: 'blur(8px)',
         borderBottom: `1px solid ${C.line}`,
+        flexWrap: 'wrap',
       }}
     >
       <button
-        onClick={() => setTab('home')}
+        onClick={() => {
+          setTab('home');
+          setMenuOpen(false);
+        }}
         style={{
           border: 'none',
           background: 'transparent',
@@ -126,6 +181,7 @@ export function Nav({ tab, setTab, walletLabel, onConnect }) {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
+            flex: 'none',
           }}
         >
           <Icon name="teepee" size={24} />
@@ -134,50 +190,92 @@ export function Nav({ tab, setTab, walletLabel, onConnect }) {
           <span style={{ display: 'block', fontSize: 21, fontWeight: 900, letterSpacing: '-0.01em', lineHeight: 1.1 }}>
             Tribe
           </span>
-          <span style={{ display: 'block', fontSize: 10.5, color: C.soft, fontWeight: 600 }}>
-            Invest Together. Grow Together.
-          </span>
+          {!isMobile && (
+            <span style={{ display: 'block', fontSize: 10.5, color: C.soft, fontWeight: 600 }}>
+              Invest Together. Grow Together.
+            </span>
+          )}
         </span>
       </button>
 
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {TABS.map(([key, label]) => (
+      {/* Wide screens: inline tab row. Narrow: a hamburger that reveals the tabs. */}
+      {!isTablet && (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {TABS.map(([key, label]) => (
+            <TabButton key={key} tabKey={key} label={label} tab={tab} setTab={setTab} />
+          ))}
+        </div>
+      )}
+
+      {!isTablet && walletBtn}
+
+      {isTablet && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {walletBtn}
           <button
-            key={key}
-            onClick={() => setTab(key)}
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Menu"
+            aria-expanded={menuOpen}
             style={{
-              border: 'none',
+              border: `1px solid ${C.line}`,
+              background: '#fff',
               cursor: 'pointer',
-              font: 'inherit',
-              fontSize: 14,
-              fontWeight: 700,
-              padding: '8px 15px',
-              borderRadius: 999,
-              background: tab === key ? C.sage : 'transparent',
-              color: tab === key ? C.green : C.muted,
+              borderRadius: 12,
+              width: 42,
+              height: 42,
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              padding: 0,
             }}
           >
-            {label}
+            {[0, 1, 2].map((i) => (
+              <span key={i} style={{ width: 18, height: 2, borderRadius: 2, background: C.ink }} />
+            ))}
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      <HoverButton
-        onClick={onConnect}
-        hoverBg={C.greenDark}
-        style={{
-          border: 'none',
-          fontSize: 14,
-          fontWeight: 800,
-          color: C.cream,
-          background: C.green,
-          padding: '10px 22px',
-          borderRadius: 999,
-        }}
-      >
-        {walletLabel}
-      </HoverButton>
+      {isTablet && menuOpen && (
+        <div
+          style={{
+            flexBasis: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            paddingTop: 8,
+            borderTop: `1px solid ${C.line}`,
+            marginTop: 4,
+          }}
+        >
+          {TABS.map(([key, label]) => (
+            <TabButton
+              key={key}
+              tabKey={key}
+              label={label}
+              tab={tab}
+              setTab={setTab}
+              onNavigate={() => setMenuOpen(false)}
+            />
+          ))}
+        </div>
+      )}
     </nav>
+  );
+}
+
+/**
+ * Wraps wide, fixed-column tables so they scroll sideways on narrow screens
+ * instead of crushing their columns. `minWidth` keeps the grid at its designed
+ * width; the page body itself never scrolls horizontally.
+ */
+export function ScrollX({ minWidth = 640, children, style }) {
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', ...style }}>
+      <div style={{ minWidth }}>{children}</div>
+    </div>
   );
 }
 

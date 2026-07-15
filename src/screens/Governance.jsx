@@ -1,6 +1,7 @@
 import { ACTION_PREVIEW_META, KIND_META, MARGIN_MIN_PCT, TRADABLE, TOKENS, YES_MIN_PCT } from '../domain';
 import { Icon } from '../icons';
 import { C, Card, HoverButton, SectionHead } from '../ui';
+import { useIsTablet } from '../useMediaQuery';
 
 const INPUT = {
   width: '100%',
@@ -105,6 +106,7 @@ export default function Governance(v) {
 function CreateProposal(v) {
   const { state, patch, actionTabs, protocolChips, npTk, curAction } = v;
   const prev = ACTION_PREVIEW_META[curAction];
+  const isTablet = useIsTablet();
 
   return (
     <Card style={{ borderRadius: 20, padding: 26, marginBottom: 20 }}>
@@ -155,7 +157,15 @@ function CreateProposal(v) {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 330px', gap: 26, marginTop: 20, alignItems: 'start' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isTablet ? '1fr' : '1fr 330px',
+          gap: 26,
+          marginTop: 20,
+          alignItems: 'start',
+        }}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div>
             <label style={LABEL}>Action</label>
