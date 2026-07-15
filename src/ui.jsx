@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from './icons';
 import { useIsMobile, useIsTablet } from './useMediaQuery';
 import { WALLETS, isInstalled } from './wallet';
+import { WalletLogo } from './walletLogos';
 
 export const C = {
   cream: '#faf6ec',
@@ -280,29 +281,6 @@ export function ScrollX({ minWidth = 640, children, style }) {
   );
 }
 
-/** A small square badge with a wallet's initial, used in the picker. */
-function WalletGlyph({ name, chain }) {
-  return (
-    <span
-      style={{
-        width: 38,
-        height: 38,
-        borderRadius: 11,
-        flex: 'none',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 900,
-        fontSize: 16,
-        color: '#fff',
-        background: chain === 'solana' ? C.green : '#c2762e',
-      }}
-    >
-      {name[0]}
-    </span>
-  );
-}
-
 /**
  * The wallet picker. Lists every wallet Tribe supports, shows whether each is
  * installed, and labels the chain. Solana wallets can deposit; MetaMask (EVM)
@@ -382,7 +360,7 @@ export function WalletModal({ open, onClose, onPick }) {
                   padding: '12px 14px',
                 }}
               >
-                <WalletGlyph name={w.name} chain={w.chain} />
+                <WalletLogo id={w.id} />
                 <span style={{ flex: 1 }}>
                   <span style={{ display: 'block', fontWeight: 800, fontSize: 15 }}>{w.name}</span>
                   <span style={{ display: 'block', fontSize: 11.5, color: C.soft, fontWeight: 600 }}>
