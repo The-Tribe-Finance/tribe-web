@@ -19,6 +19,7 @@ import {
   navOf,
   parseTVL,
   usd,
+  usdPrecise,
   usdCompact,
 } from './domain';
 import { Nav, Toast, WalletModal } from './ui';
@@ -29,6 +30,7 @@ import Governance from './screens/Governance';
 import Delegation from './screens/Delegation';
 import Position from './screens/Position';
 import DelegatePrompt from './screens/DelegatePrompt';
+import { emptyVaultSnapshot, fetchVaultSnapshot } from './api/vault';
 
 const PROPS = {
   vaultName: 'Tribe DAO',
@@ -36,11 +38,53 @@ const PROPS = {
   proposalThresholdPct: 1,
 };
 
+const VAULT_HISTORY_KEY = 'tribe:vault-history:v1';
+const HISTORY_RETENTION_DAYS = 370;
+
+function readVaultHistory() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(VAULT_HISTORY_KEY) || '[]');
+    return Array.isArray(saved)
+      ? saved.filter((point) => Number.isFinite(point?.at) && Number.isFinite(point?.tvl))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDailyVaultSnapshot(history, point) {
+  const now = Date.now();
+  const intradayCutoff = now - 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - HISTORY_RETENTION_DAYS * 86400000;
+  const daily = new Map();
+  const intraday = [];
+  history.filter((entry) => entry.at >= cutoff).forEach((entry) => {
+    if (entry.at >= intradayCutoff) {
+      intraday.push(entry);
+      return;
+    }
+    const entryDay = new Date(entry.at);
+    entryDay.setHours(0, 0, 0, 0);
+    daily.set(entryDay.getTime(), entry);
+  });
+  const next = [...daily.values(), ...intraday, point]
+    .filter((entry, index, all) => index === all.findIndex((candidate) => candidate.at === entry.at))
+    .sort((a, b) => a.at - b.at);
+  try {
+    window.localStorage.setItem(VAULT_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // A full/disabled local storage should never prevent the live portfolio rendering.
+  }
+  return next;
+}
+
 export default function App() {
   const [state, setState] = useState(() => ({
     ...INITIAL_STATE,
     delegatedTo: PROPS.startDelegated ? 'minh' : null,
   }));
+  const [vaultSnapshot, setVaultSnapshot] = useState(emptyVaultSnapshot);
+  const [vaultHistory, setVaultHistory] = useState(readVaultHistory);
   const toastTimer = useRef(null);
 
   const patch = useCallback((next) => {
@@ -58,6 +102,21 @@ export default function App() {
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
+  const refreshVault = useCallback(async () => {
+    const snapshot = await fetchVaultSnapshot();
+    setVaultSnapshot(snapshot);
+    const tvl = snapshot.holdings.reduce(
+      (total, holding) => total + holding.qty * (snapshot.prices[holding.sym] || 0),
+      snapshot.treasury,
+    );
+    setVaultHistory((history) => saveDailyVaultSnapshot(history, { at: Date.now(), tvl }));
+  }, []);
+  useEffect(() => {
+    refreshVault();
+    const timer = setInterval(refreshVault, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshVault]);
+
   // Real multi-wallet support. Lifecycle events surface through the same toast.
   const wallet = useWallet((e) => showToast(e.message));
   const [walletModalOpen, setWalletModalOpen] = useState(false);
@@ -68,7 +127,7 @@ export default function App() {
     patch({ walletConnected: wallet.connected });
   }, [wallet.connected, patch]);
 
-  const vals = useDerived(state, patch, showToast, wallet);
+  const vals = useDerived(state, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault);
 
   const screens = {
     home: Landing,
@@ -130,8 +189,10 @@ export default function App() {
  * Port of the design component's renderVals(): turns raw state into every
  * formatted value and handler the screens render.
  */
-function useDerived(s, patch, showToast, wallet) {
+function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault) {
   return useMemo(() => {
+    // On-chain balances are authoritative. A failed RPC intentionally displays zeros.
+    const s = { ...rawState, treasury: vaultSnapshot.treasury, totalShares: vaultSnapshot.totalShares, holdings: vaultSnapshot.holdings };
     const setTab = (tab) => () => patch({ tab });
 
     const isDelegated = !!s.delegatedTo;
@@ -140,39 +201,41 @@ function useDerived(s, patch, showToast, wallet) {
     const lockDaysLeft = delegationLocked ? Math.ceil((lockUntil - Date.now()) / 86400000) : 0;
     const days = (n) => n + ' day' + (n === 1 ? '' : 's');
 
-    const NAV = navOf(s);
+    const NAV = s.holdings.reduce((total, h) => total + h.qty * (vaultSnapshot.prices[h.sym] || 0), s.treasury);
     const activePower = NAV;
-    const sharePrice = NAV / s.totalShares;
+    const sharePrice = s.totalShares > 0 ? NAV / s.totalShares : 0;
     const userValue = s.userShares * sharePrice;
-    const ownership = (s.userShares / s.totalShares) * 100;
+    const ownership = s.totalShares > 0 ? (s.userShares / s.totalShares) * 100 : 0;
 
     // ---- holdings, allocation ----
     const holdRows = s.holdings
       .map((h) => {
-        const tk = TOKENS[h.sym];
+        const fallbackToken = { name: h.sym, price: 0, chg: 0, sw: '#8a7d63', badge: '?' };
+        const tk = { ...(TOKENS[h.sym] || fallbackToken), price: vaultSnapshot.prices[h.sym] || 0, chg: vaultSnapshot.changes[h.sym] || 0 };
         const value = h.qty * tk.price;
         return {
           ...h,
           tk,
           value,
           pnl: (tk.price - h.avgCost) * h.qty,
-          pnlPct: (tk.price / h.avgCost - 1) * 100,
+          pnlPct: h.avgCost > 0 ? (tk.price / h.avgCost - 1) * 100 : 0,
         };
       })
       .sort((a, b) => b.value - a.value);
 
-    const tokenRows = holdRows.map((r) => ({
+    const tokenRows = holdRows.filter((r) => r.qty > 0).map((r) => ({
       sym: r.sym,
       name: r.tk.name,
       swatch: r.tk.sw,
       badge: r.tk.badge,
-      priceFmt: usd(r.tk.price),
+      logo: r.tk.logo,
+      priceFmt: '$' + fmt(r.tk.price, 2),
       chgFmt: (r.tk.chg >= 0 ? '+' : '') + r.tk.chg.toFixed(1) + '%',
       chgColor: r.tk.chg >= 0 ? '#3e7d3a' : '#b3452f',
-      qtyFmt: fmt(r.qty, r.qty < 100 ? 3 : 0),
-      avgFmt: usd(r.avgCost),
-      valueFmt: usd(r.value),
-      weightFmt: ((r.value / NAV) * 100).toFixed(1) + '%',
+      qtyFmt: fmt(r.qty, r.qty > 0 && r.qty < 0.001 ? 8 : r.qty < 100 ? 3 : 0),
+      avgFmt: '$' + fmt(r.avgCost, 2),
+      valueFmt: usdPrecise(r.value),
+      weightFmt: (NAV > 0 ? (r.value / NAV) * 100 : 0).toFixed(1) + '%',
       pnlFmt:
         (r.pnl >= 0 ? '+' : '−') +
         usd(Math.abs(r.pnl)) +
@@ -182,25 +245,29 @@ function useDerived(s, patch, showToast, wallet) {
         '%)',
       pnlColor: r.pnl >= 0 ? '#3e7d3a' : '#b3452f',
     }));
-    tokenRows.push({
-      sym: 'USDC',
-      name: 'Cash reserve',
-      swatch: TOKENS.USDC.sw,
-      badge: '$',
-      priceFmt: '$1.00',
-      chgFmt: '0.0%',
-      chgColor: '#8a7d63',
-      qtyFmt: fmt(s.treasury),
-      avgFmt: '$1.00',
-      valueFmt: usd(s.treasury),
-      weightFmt: ((s.treasury / NAV) * 100).toFixed(1) + '%',
-      pnlFmt: '—',
-      pnlColor: '#8a7d63',
-    });
-
+    // Cash is also a real vault holding.  Keep it in the table whenever the
+    // reserve is positive, while zero-balance tokens stay hidden.
+    if (s.treasury > 0) {
+      tokenRows.push({
+        sym: 'USDC',
+        name: 'Cash reserve',
+        swatch: TOKENS.USDC.sw,
+        badge: TOKENS.USDC.badge,
+        logo: TOKENS.USDC.logo,
+        priceFmt: '$1.00',
+        chgFmt: '0.0%',
+        chgColor: '#8a7d63',
+        qtyFmt: fmt(s.treasury, 6),
+        avgFmt: '$1.00',
+        valueFmt: usdPrecise(s.treasury),
+        weightFmt: (NAV > 0 ? (s.treasury / NAV) * 100 : 0).toFixed(1) + '%',
+        pnlFmt: '—',
+        pnlColor: '#8a7d63',
+      });
+    }
     const allocSrc = [
-      ...holdRows.map((r) => ({ sym: r.sym, value: r.value, color: r.tk.sw })),
-      { sym: 'USDC', value: s.treasury, color: TOKENS.USDC.sw },
+      ...holdRows.filter((r) => r.qty > 0).map((r) => ({ sym: r.sym, value: r.value, color: r.tk.sw })),
+      ...(s.treasury > 0 ? [{ sym: 'USDC', value: s.treasury, color: TOKENS.USDC.sw }] : []),
     ];
     const ah = s.allocHover;
     let cum = 0;
@@ -340,17 +407,25 @@ function useDerived(s, patch, showToast, wallet) {
     }));
 
     const npAmt = parseFloat(s.npAmount) || 0;
-    const npTk = TOKENS[s.npToken];
+    const npTk = { ...TOKENS[s.npToken], price: vaultSnapshot.prices[s.npToken] || 0 };
+    const selectedHolding = s.holdings.find((holding) => holding.sym === s.npToken);
+    const selectedTokenQty = selectedHolding?.qty ?? 0;
+    const selectedTokenValue = selectedTokenQty * npTk.price;
+    const availableOrderValue = curAction === 'buy' ? s.treasury : selectedTokenValue;
+    const availableLiquidityLabel = curAction === 'buy'
+      ? `${fmt(s.treasury, 6)} USDC`
+      : `${fmt(selectedTokenQty, selectedTokenQty === 0 ? 0 : 8)} ${s.npToken}`;
     const thesisOk = (s.npThesis || '').trim().length >= 20;
     const threshold = PROPS.proposalThresholdPct;
     const meetsThreshold = ownership >= threshold;
     const submitDisabled = !(
       npAmt > 0 &&
+      npTk.price > 0 &&
       thesisOk &&
       meetsThreshold &&
       protoLive &&
       !actionSoon &&
-      (curAction === 'sell' || npAmt <= s.treasury)
+      npAmt <= availableOrderValue
     );
 
     let createHint;
@@ -525,9 +600,10 @@ function useDerived(s, patch, showToast, wallet) {
     const redeemValue = redeemShares * sharePrice;
     const isUsdc = s.redeemMode === 'usdc';
     const redeemBreakdown = allocSrc.map((a) => {
-      const v = redeemValue * (a.value / NAV);
-      const units = v / TOKENS[a.sym].price;
-      return { sym: a.sym, amount: fmt(units, units < 1 ? 4 : 2), value: usd(v) };
+      const value = NAV > 0 ? redeemValue * (a.value / NAV) : 0;
+      const price = vaultSnapshot.prices[a.sym] || 0;
+      const units = price > 0 ? value / price : 0;
+      return { sym: a.sym, amount: fmt(units, units < 1 ? 8 : 2), value: usdPrecise(value) };
     });
 
     const confirmRedeem = () => {
@@ -559,6 +635,9 @@ function useDerived(s, patch, showToast, wallet) {
       state: s,
       patch,
       vaultName: PROPS.vaultName,
+      vaultSource: vaultSnapshot.source,
+      vaultHistory,
+      refreshVault,
       goPortfolio: setTab('portfolio'),
       goGovernance: setTab('governance'),
       goAnalysts: setTab('analysts'),
@@ -566,13 +645,13 @@ function useDerived(s, patch, showToast, wallet) {
 
       // vault stats
       NAV,
-      navFmt: usd(Math.round(NAV)),
+      navFmt: usdPrecise(NAV),
       sharePriceFmt: sharePrice.toFixed(3) + ' USDC',
-      userValueFmt: usd(userValue),
+      userValueFmt: usdPrecise(userValue),
       sharesFmt: fmt(s.userShares),
       ownershipFmt: ownership.toFixed(2) + '%',
       usdcFmt: fmt(s.walletUsdc),
-      treasuryFmt: usd(s.treasury),
+      treasuryFmt: usdPrecise(s.treasury),
       treasuryPctFmt: ((s.treasury / NAV) * 100).toFixed(1) + '%',
       userPnlFmt: (userPnl >= 0 ? '+' : '−') + usd(Math.abs(userPnl)),
       votingPowerFmt: usd(userValue),
@@ -604,6 +683,9 @@ function useDerived(s, patch, showToast, wallet) {
       npToken: s.npToken,
       npTk,
       npAmt,
+      availableLiquidityLabel,
+      availableOrderValueFmt: usdPrecise(availableOrderValue),
+      hasSufficientOrderLiquidity: npAmt <= availableOrderValue,
       submitDisabled,
       submitProposal,
       createHint,
@@ -674,5 +756,5 @@ function useDerived(s, patch, showToast, wallet) {
       walletConnected,
       walletAddress: wallet?.address ?? null,
     };
-  }, [s, patch, showToast, wallet]);
+  }, [rawState, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault]);
 }

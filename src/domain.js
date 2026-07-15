@@ -1,13 +1,45 @@
+import { STOCK_LOGOS } from './stockLogos';
+
 export const TOKENS = {
-  AAPLx: { name: 'Apple', price: 228.14, chg: 1.2, sw: '#7d9a5c', badge: 'A' },
-  NVDAx: { name: 'NVIDIA', price: 171.62, chg: 2.4, sw: '#3e5c2f', badge: 'N' },
-  MSFTx: { name: 'Microsoft', price: 465.2, chg: 0.6, sw: '#a8503a', badge: 'M' },
-  GOOGLx: { name: 'Alphabet', price: 191.5, chg: -0.4, sw: '#c2762e', badge: 'G' },
-  BTC: { name: 'Bitcoin', price: 118450, chg: 1.8, sw: '#c2b98f', badge: '₿' },
-  SOL: { name: 'Solana', price: 214.3, chg: 3.1, sw: '#6a8caf', badge: 'S' },
-  TSLAx: { name: 'Tesla', price: 342.1, chg: -1.1, sw: '#b3452f', badge: 'T' },
-  AMZNx: { name: 'Amazon', price: 201.8, chg: 0.9, sw: '#8a6a45', badge: 'Z' },
-  USDC: { name: 'USD Coin', price: 1, chg: 0, sw: '#e8b544', badge: '$' },
+  AAPLx: { name: 'Apple', price: 50.00, chg: -4.0, sw: '#7d9a5c', badge: 'A', logo: STOCK_LOGOS['AAPLx'] },
+  NVDAx: { name: 'NVIDIA', price: 87.00, chg: -2.7, sw: '#3e5c2f', badge: 'N', logo: STOCK_LOGOS['NVDAx'] },
+  MSFTx: { name: 'Microsoft', price: 124.00, chg: -1.4, sw: '#a8503a', badge: 'M', logo: STOCK_LOGOS['MSFTx'] },
+  GOOGLx: { name: 'Alphabet', price: 161.00, chg: -0.1, sw: '#c2762e', badge: 'G', logo: STOCK_LOGOS['GOOGLx'] },
+  TSLAx: { name: 'Tesla', price: 198.00, chg: 1.2, sw: '#b3452f', badge: 'T', logo: STOCK_LOGOS['TSLAx'] },
+  AMZNx: { name: 'Amazon', price: 235.00, chg: 2.5, sw: '#8a6a45', badge: 'A', logo: STOCK_LOGOS['AMZNx'] },
+  METAx: { name: 'Meta', price: 272.00, chg: 3.8, sw: '#6a8caf', badge: 'M', logo: STOCK_LOGOS['METAx'] },
+  COINx: { name: 'Coinbase', price: 309.00, chg: -2.9, sw: '#4a6b35', badge: 'C', logo: STOCK_LOGOS['COINx'] },
+  MSTRx: { name: 'MicroStrategy', price: 346.00, chg: -1.6, sw: '#9a7d4a', badge: 'M', logo: STOCK_LOGOS['MSTRx'] },
+  AMDx: { name: 'AMD', price: 383.00, chg: -0.3, sw: '#5c7d6a', badge: 'A', logo: STOCK_LOGOS['AMDx'] },
+  PLTRx: { name: 'Palantir', price: 420.00, chg: 1.0, sw: '#7d9a5c', badge: 'P', logo: STOCK_LOGOS['PLTRx'] },
+  SPYx: { name: 'SP500', price: 57.00, chg: 2.3, sw: '#3e5c2f', badge: 'S', logo: STOCK_LOGOS['SPYx'] },
+  QQQx: { name: 'Nasdaq', price: 94.00, chg: 3.6, sw: '#a8503a', badge: 'Q', logo: STOCK_LOGOS['QQQx'] },
+  NFLXx: { name: 'Netflix', price: 131.00, chg: -3.1, sw: '#c2762e', badge: 'N', logo: STOCK_LOGOS['NFLXx'] },
+  CRCLx: { name: 'Circle', price: 168.00, chg: -1.8, sw: '#b3452f', badge: 'C', logo: STOCK_LOGOS['CRCLx'] },
+  HOODx: { name: 'Robinhood', price: 205.00, chg: -0.5, sw: '#8a6a45', badge: 'H', logo: STOCK_LOGOS['HOODx'] },
+  GLDx: { name: 'Gold', price: 242.00, chg: 0.8, sw: '#6a8caf', badge: 'G', logo: STOCK_LOGOS['GLDx'] },
+  JNJx: { name: 'Johnson & Johnson', price: 279.00, chg: 2.1, sw: '#4a6b35', badge: 'J', logo: STOCK_LOGOS['JNJx'] },
+  JPMx: { name: 'JPMorgan Chase', price: 316.00, chg: 3.4, sw: '#9a7d4a', badge: 'J', logo: STOCK_LOGOS['JPMx'] },
+  WMTx: { name: 'Walmart', price: 353.00, chg: -3.3, sw: '#5c7d6a', badge: 'W', logo: STOCK_LOGOS['WMTx'] },
+  ORCLx: { name: 'Oracle', price: 390.00, chg: -2.0, sw: '#7d9a5c', badge: 'O', logo: STOCK_LOGOS['ORCLx'] },
+  KOx: { name: 'Coca-Cola', price: 427.00, chg: -0.7, sw: '#3e5c2f', badge: 'K', logo: STOCK_LOGOS['KOx'] },
+  PGx: { name: 'Procter & Gamble', price: 64.00, chg: 0.6, sw: '#a8503a', badge: 'P', logo: STOCK_LOGOS['PGx'] },
+  CSCOx: { name: 'Cisco', price: 101.00, chg: 1.9, sw: '#c2762e', badge: 'C', logo: STOCK_LOGOS['CSCOx'] },
+  PEPx: { name: 'PepsiCo', price: 138.00, chg: 3.2, sw: '#b3452f', badge: 'P', logo: STOCK_LOGOS['PEPx'] },
+  MRKx: { name: 'Merck', price: 175.00, chg: -3.5, sw: '#8a6a45', badge: 'M', logo: STOCK_LOGOS['MRKx'] },
+  AVGOx: { name: 'Broadcom', price: 212.00, chg: -2.2, sw: '#6a8caf', badge: 'A', logo: STOCK_LOGOS['AVGOx'] },
+  MCDx: { name: 'McDonald\'s', price: 249.00, chg: -0.9, sw: '#4a6b35', badge: 'M', logo: STOCK_LOGOS['MCDx'] },
+  CVXx: { name: 'Chevron', price: 286.00, chg: 0.4, sw: '#9a7d4a', badge: 'C', logo: STOCK_LOGOS['CVXx'] },
+  LLYx: { name: 'Eli Lilly', price: 323.00, chg: 1.7, sw: '#5c7d6a', badge: 'L', logo: STOCK_LOGOS['LLYx'] },
+  ABTx: { name: 'Abbott', price: 360.00, chg: 3.0, sw: '#7d9a5c', badge: 'A', logo: STOCK_LOGOS['ABTx'] },
+  ABBVx: { name: 'AbbVie', price: 397.00, chg: -3.7, sw: '#3e5c2f', badge: 'A', logo: STOCK_LOGOS['ABBVx'] },
+  BACx: { name: 'Bank of America', price: 434.00, chg: -2.4, sw: '#a8503a', badge: 'B', logo: STOCK_LOGOS['BACx'] },
+  // Verified token-list artwork, consumed from Jupiter/Solana's token metadata source.
+  BTC: { name: 'Bitcoin', price: 118450, chg: 1.8, sw: '#f7931a', badge: '₿', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E/logo.png' },
+  ETH: { name: 'Ether', price: 3625, chg: 2.2, sw: '#627eea', badge: 'Ξ', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png' },
+  SOL: { name: 'Solana', price: 214.3, chg: 3.1, sw: '#6a8caf', badge: 'S', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' },
+  USDC: { name: 'USD Coin', price: 1, chg: 0, sw: '#2775ca', badge: '$', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png' },
+  USDT: { name: 'Tether USD', price: 1, chg: 0, sw: '#26a17b', badge: '₮', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png' },
 };
 
 export const HWM = 1.291;
@@ -27,12 +59,12 @@ export const ACTIONS = {
 };
 
 export const PROTOCOLS = {
-  jupiter: { name: 'Jupiter', dot: '#c2762e', badge: 'J', live: true },
-  kamino: { name: 'Kamino', dot: '#6a8caf', badge: 'K', live: false },
-  marginfi: { name: 'MarginFi', dot: '#a8503a', badge: 'M', live: false },
-  drift: { name: 'Drift', dot: '#8a6a45', badge: 'D', live: false },
-  jito: { name: 'Jito', dot: '#4a6b35', badge: 'Ji', live: false },
-  marinade: { name: 'Marinade', dot: '#c2762e', badge: 'Mn', live: false },
+  jupiter: { name: 'Jupiter', dot: '#c2762e', badge: 'J', icon: 'https://static.jup.ag/jup/icon.png', live: true },
+  kamino: { name: 'Kamino', dot: '#6a8caf', badge: 'K', icon: 'https://kamino.com/favicon.ico', live: false },
+  marginfi: { name: 'MarginFi', dot: '#a8503a', badge: 'M', icon: 'https://app.marginfi.com/favicon.ico', live: false },
+  drift: { name: 'Drift', dot: '#8a6a45', badge: 'D', icon: 'https://app.drift.trade/favicon.ico', live: false },
+  jito: { name: 'Jito', dot: '#4a6b35', badge: 'Ji', icon: 'https://www.jito.network/jito-black.svg', live: false },
+  marinade: { name: 'Marinade', dot: '#c2762e', badge: 'Mn', icon: 'https://app.marinade.finance/favicon.ico', live: false },
 };
 
 export const ACTION_PROTOS = {
@@ -42,7 +74,50 @@ export const ACTION_PROTOS = {
   stake: ['jito', 'marinade'],
 };
 
-export const TRADABLE = ['AAPLx', 'NVDAx', 'MSFTx', 'GOOGLx', 'BTC', 'SOL', 'TSLAx', 'AMZNx'];
+export const XSTOCKS = ['AAPLx', 'NVDAx', 'MSFTx', 'GOOGLx', 'TSLAx', 'AMZNx', 'METAx', 'COINx', 'MSTRx', 'AMDx', 'PLTRx', 'SPYx', 'QQQx', 'NFLXx', 'CRCLx', 'HOODx', 'GLDx', 'JNJx', 'JPMx', 'WMTx', 'ORCLx', 'KOx', 'PGx', 'CSCOx', 'PEPx', 'MRKx', 'AVGOx', 'MCDx', 'CVXx', 'LLYx', 'ABTx', 'ABBVx', 'BACx'];
+export const CORE_CRYPTO = ['BTC', 'ETH', 'SOL'];
+export const STABLECOINS = ['USDC', 'USDT'];
+export const INDEX_TOKENS = ['SPYx', 'QQQx', 'GLDx'];
+
+// The contract's approved xStock mints. Keeping the mint alongside UI metadata
+// makes address search deterministic and prevents a similarly named token from
+// appearing as a valid proposal target.
+export const TOKEN_MINTS = {
+  BTC: '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E',
+  // Wrapped Ether (Portal) is the liquid Solana representation routed by Jupiter.
+  ETH: '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
+  SOL: 'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  AAPLx: 'XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp', NVDAx: 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh',
+  MSFTx: 'XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX', GOOGLx: 'XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN',
+  TSLAx: 'XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB', AMZNx: 'Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg',
+  METAx: 'Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu', COINx: 'Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu',
+  MSTRx: 'XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ', AMDx: 'XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF',
+  PLTRx: 'XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4', SPYx: 'XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W',
+  QQQx: 'Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ', NFLXx: 'XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL',
+  CRCLx: 'XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1', HOODx: 'XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg',
+  GLDx: 'Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re', JNJx: 'XsGVi5eo1Dh2zUpic4qACcjuWGjNv8GCt3dm5XcX6Dn',
+  JPMx: 'XsMAqkcKsUewDrzVkait4e5u4y8REgtyS7jWgCpLV2C', WMTx: 'Xs151QeqTCiuKtinzfRATnUESM2xTU6V9Wy8Vy538ci',
+  ORCLx: 'XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL', KOx: 'XsaBXg8dU5cPM6ehmVctMkVqoiRG2ZjMo1cyBJ3AykQ',
+  PGx: 'XsYdjDjNUygZ7yGKfQaB6TxLh2gC6RRjzLtLAGJrhzV', CSCOx: 'Xsr3pdLQyXvDJBFgpR5nexCEZwXvigb8wbPYp4YoNFf',
+  PEPx: 'Xsv99frTRUeornyvCfvhnDesQDWuvns1M852Pez91vF', MRKx: 'XsnQnU7AdbRZYe2akqqpibDdXjkieGFfSkbkjX1Sd1X',
+  AVGOx: 'XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo', MCDx: 'XsqE9cRRpzxcGKDXj1BJ7Xmg4GRhZoyY1KpmGSxAWT2',
+  CVXx: 'XsNNMt7WTNA2sV3jrb1NNfNgapxRF5i4i6GcnTRRHts', LLYx: 'Xsnuv4omNoHozR6EEW5mXkw8Nrny5rB3jVfLqi6gKMH',
+  ABTx: 'XsHtf5RpxsQ7jeJ9ivNewouZKJHbPxhPoEy6yYvULr7', ABBVx: 'XswbinNKyPmzTa5CskMbCPvMW6G5CMnZXZEeQSSQoie',
+  BACx: 'XswsQk4duEQmCbGzfqUUWYmi7pV7xpJ9eEmLHXCaEQP',
+};
+
+// Tribe-defined categories: intended for investment suitability, not short-term
+// volume or social momentum. Every symbol is an explicit candidate, never a
+// free-form token discovery result.
+export const TOKEN_CATEGORIES = {
+  top: [...CORE_CRYPTO, ...STABLECOINS, 'AAPLx', 'NVDAx', 'SPYx', 'QQQx'],
+  crypto: CORE_CRYPTO,
+  stable: STABLECOINS,
+  indices: INDEX_TOKENS,
+  stocks: XSTOCKS.filter((symbol) => !INDEX_TOKENS.includes(symbol)),
+};
 
 export const ANALYST_NAMES = { minh: 'Minh Tran', ha: 'Ha Le', david: 'David Chen' };
 
@@ -68,7 +143,17 @@ export const ACTION_PREVIEW_META = {
   stake: { bg: '#efe6da', c: '#7a5a34' },
 };
 
-export const CHART_RANGES = { '30D': 2, '3M': 4, '6M': 7, '12M': 13 };
+// Each range has a calendar window and a reporting cadence.  Values are only
+// plotted after the browser has observed them from the vault; this avoids
+// presenting a few seconds of local polling as months of performance.
+export const CHART_RANGES = {
+  '24H': { durationMs: 24 * 60 * 60 * 1000, bucket: 'sample', caption: 'Live vault snapshots (last 24 hours)' },
+  '7D': { days: 7, bucket: 'day', caption: 'Daily vault snapshots' },
+  '30D': { days: 30, bucket: 'day', caption: 'Daily vault snapshots' },
+  '3M': { days: 92, bucket: 'week', caption: 'Weekly vault snapshots' },
+  '6M': { days: 183, bucket: 'month', caption: 'Monthly vault snapshots' },
+  '12M': { days: 366, bucket: 'month', caption: 'Monthly vault snapshots' },
+};
 
 export const ACCRUED = { minh: 148500, ha: 92400, david: 21800 };
 export const FEE_PERF = 412000;
@@ -146,6 +231,8 @@ export const STEPS = [
 
 export const fmt = (n, d) => n.toLocaleString('en-US', { maximumFractionDigits: d ?? 0 });
 export const usd = (n) => '$' + fmt(n);
+export const usdPrecise = (n) =>
+  Math.abs(n) > 0 && Math.abs(n) < 1 ? '$' + n.toFixed(6).replace(/0+$/, '').replace(/\.$/, '') : usd(n);
 
 export function usdCompact(n) {
   if (n >= 1e6) return '$' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
@@ -261,7 +348,7 @@ export const INITIAL_STATE = {
   depositAmt: '',
   redeemPct: 10,
   redeemMode: 'usdc',
-  chartRange: '12M',
+  chartRange: '30D',
   votingDays: 5,
   delegatedAt: null,
   npAction: 'buy',
@@ -277,21 +364,54 @@ export const INITIAL_STATE = {
   allocHover: null,
 };
 
-/** The historical TVL series; the final point tracks live NAV. */
-export function tvlSeries(nav) {
-  return [
-    { label: "Jul '25", tvl: 9980000 },
-    { label: "Aug '25", tvl: 10180000 },
-    { label: "Sep '25", tvl: 9910000 },
-    { label: "Oct '25", tvl: 10620000 },
-    { label: "Nov '25", tvl: 10410000 },
-    { label: "Dec '25", tvl: 11180000 },
-    { label: "Jan '26", tvl: 10860000 },
-    { label: "Feb '26", tvl: 11620000 },
-    { label: "Mar '26", tvl: 11980000 },
-    { label: "Apr '26", tvl: 11720000 },
-    { label: "May '26", tvl: 12380000 },
-    { label: "Jun '26", tvl: 12540000 },
-    { label: "Jul '26", tvl: Math.round(nav) },
-  ];
+/**
+ * Only render samples the client actually read from the vault. We intentionally
+ * do not fabricate month labels for a local vault with no imported history.
+ */
+export function tvlSeries(nav, samples = [], range = '30D') {
+  const config = CHART_RANGES[range] || CHART_RANGES['30D'];
+  const now = new Date();
+  const cutoff = config.durationMs
+    ? new Date(now.getTime() - config.durationMs)
+    : new Date(now);
+  if (!config.durationMs) {
+    cutoff.setDate(cutoff.getDate() - (config.days - 1));
+    cutoff.setHours(0, 0, 0, 0);
+  }
+
+  const startOfWeek = (date) => {
+    const start = new Date(date);
+    const offset = (start.getDay() + 6) % 7; // Monday as the start of the week.
+    start.setDate(start.getDate() - offset);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  };
+  const bucketFor = (at) => {
+    const date = new Date(at);
+    if (config.bucket === 'sample') return date;
+    if (config.bucket === 'week') return startOfWeek(date);
+    if (config.bucket === 'month') return new Date(date.getFullYear(), date.getMonth(), 1);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+  const labelFor = (date) => {
+    if (config.bucket === 'sample') return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    if (config.bucket === 'month') return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    if (config.bucket === 'week') return `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const buckets = new Map();
+  samples
+    .filter((sample) => Number.isFinite(sample?.at) && Number.isFinite(sample?.tvl) && sample.at >= cutoff.getTime())
+    .sort((a, b) => a.at - b.at)
+    .forEach((sample) => {
+      const date = bucketFor(sample.at);
+      buckets.set(date.getTime(), { at: date.getTime(), label: labelFor(date), tvl: sample.tvl });
+    });
+
+  if (!buckets.size) {
+    const date = bucketFor(now);
+    return [{ at: date.getTime(), label: labelFor(date), tvl: nav }];
+  }
+  return [...buckets.values()].sort((a, b) => a.at - b.at);
 }

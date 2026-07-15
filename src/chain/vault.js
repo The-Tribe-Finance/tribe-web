@@ -6,7 +6,13 @@
  * shares; NAV is read on-chain from the oracle accounts passed as remaining
  * accounts.
  */
-import { Connection, PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+  ComputeBudgetProgram,
+} from "@solana/web3.js";
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 import {
   TOKEN_PROGRAM_ID,
@@ -30,10 +36,12 @@ const USDC_DECIMALS = 6;
 
 // On surfpool the oracles are fake accounts that go stale in 60s; the browser
 // refreshes them via a cheatcode before depositing. Real clusters skip this.
-const SURFPOOL_ORACLES = [
-  { address: config.usdcOracle, label: "usdc-feed", priceUsd: 1 },
-  { address: config.solOracle, label: "sol-feed", priceUsd: 170 },
-];
+// Derived from every registered asset so it scales with the whitelist.
+const SURFPOOL_ORACLES = (config.assets ?? []).map((a) => ({
+  address: a.oracle,
+  label: a.oracleLabel,
+  priceUsd: a.symbol === "USDC" ? 1 : 100,
+}));
 
 /** A read-only connection to the configured cluster. */
 export function getConnection() {
@@ -124,7 +132,7 @@ export async function deposit({ provider, address, amountUi }) {
   const amount = new BN(Math.round(amountUi * 10 ** USDC_DECIMALS));
 
   // Surfpool: make the oracle prices fresh right before the NAV read.
-  if (config.cluster === "surfpool" && config.solOracle) {
+  if (config.cluster === "surfpool" && SURFPOOL_ORACLES.length) {
     await refreshSurfpoolOracles(config.rpc, SURFPOOL_ORACLES);
   }
 
@@ -159,10 +167,7 @@ export async function deposit({ provider, address, amountUi }) {
     );
   }
 
-  // Use Anchor's .rpc(): it fetches the blockhash, has the provider (Phantom)
-  // sign, and sends — the same path the working integration test uses, so the
-  // oracle freshness window lines up the way it does there.
-  const sig = await program.methods
+  const depositIx = await program.methods
     .deposit(amount)
     .accounts({
       depositor,
@@ -177,7 +182,37 @@ export async function deposit({ provider, address, amountUi }) {
       tokenProgram: TOKEN_PROGRAM_ID,
     })
     .remainingAccounts(navAccounts)
-    .preInstructions(preIxs)
-    .rpc();
+    .instruction();
+
+  // NAV over every asset needs ~105 accounts — far past a legacy transaction's
+  // limit — so send a versioned transaction backed by the lookup table the
+  // bootstrap created. Phantom signs the v0 message.
+  const lookupTables = [];
+  if (config.lookupTable) {
+    const lt = await connection.getAddressLookupTable(
+      new PublicKey(config.lookupTable),
+    );
+    if (lt.value) lookupTables.push(lt.value);
+  }
+
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  const message = new TransactionMessage({
+    payerKey: depositor,
+    recentBlockhash: blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ...preIxs,
+      depositIx,
+    ],
+  }).compileToV0Message(lookupTables);
+
+  const tx = new VersionedTransaction(message);
+  const signed = await provider.signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize());
+  await connection.confirmTransaction(
+    { signature: sig, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
   return sig;
 }

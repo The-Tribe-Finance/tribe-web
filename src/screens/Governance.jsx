@@ -1,6 +1,6 @@
-import { ACTION_PREVIEW_META, KIND_META, MARGIN_MIN_PCT, TRADABLE, TOKENS, YES_MIN_PCT } from '../domain';
+import { ACTION_PREVIEW_META, KIND_META, MARGIN_MIN_PCT, TOKEN_CATEGORIES, TOKEN_MINTS, TOKENS, YES_MIN_PCT } from '../domain';
 import { Icon } from '../icons';
-import { C, Card, HoverButton, SectionHead } from '../ui';
+import { C, Card, HoverButton, SectionHead, TokenIcon, TokenSelect } from '../ui';
 import { useIsTablet } from '../useMediaQuery';
 
 const INPUT = {
@@ -220,23 +220,7 @@ function CreateProposal(v) {
                     opacity: p.live ? 1 : 0.55,
                   }}
                 >
-                  <span
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 999,
-                      background: p.dot,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#fff',
-                      fontSize: 9,
-                      fontWeight: 900,
-                      flex: 'none',
-                    }}
-                  >
-                    {p.badge}
-                  </span>
+                  <ProtocolIcon protocol={p} size={20} />
                   {p.name}
                   {p.soon && <SoonTag />}
                 </button>
@@ -247,18 +231,13 @@ function CreateProposal(v) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={{ ...LABEL, marginBottom: 6 }}>Token</label>
-              <select
-                className="tribe-input"
+              <TokenSelect
                 value={state.npToken}
-                onChange={(e) => patch({ npToken: e.target.value })}
-                style={{ ...INPUT, fontWeight: 700 }}
-              >
-                {TRADABLE.map((sym) => (
-                  <option key={sym} value={sym}>
-                    {sym} · {TOKENS[sym].name}
-                  </option>
-                ))}
-              </select>
+                categories={TOKEN_CATEGORIES}
+                mints={TOKEN_MINTS}
+                tokens={TOKENS}
+                onChange={(sym) => patch({ npToken: sym })}
+              />
             </div>
             <div>
               <label style={{ ...LABEL, marginBottom: 6 }}>Amount (USDC)</label>
@@ -328,22 +307,7 @@ function CreateProposal(v) {
             >
               {actionTabs.find((a) => a.on).label}
             </span>
-            <span
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                background: npTk.sw,
-                color: '#fff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 900,
-              }}
-            >
-              {npTk.badge}
-            </span>
+            <TokenIcon logo={npTk.logo} swatch={npTk.sw} badge={npTk.badge} size={26} />
             <strong style={{ fontSize: 16, fontWeight: 900 }}>{state.npToken}</strong>
             <span style={{ fontSize: 12, color: C.soft }}>{npTk.name}</span>
           </div>
@@ -351,6 +315,11 @@ function CreateProposal(v) {
           <PreviewRow label="Amount" value={v.npAmountFmt} />
           <PreviewRow label="Est. size" value={`${v.previewUnits} ${state.npToken}`} />
           <PreviewRow label="Price" value={v.previewPrice} />
+          <PreviewRow
+            label={curAction === 'buy' ? 'Available USDC' : 'Available to sell'}
+            value={`${v.availableLiquidityLabel} · ${v.availableOrderValueFmt}`}
+            valueColor={v.hasSufficientOrderLiquidity ? C.up : C.down}
+          />
           <PreviewRow label="Route" value={v.previewRoute} noBorder />
           <PreviewRow label="Voting period" value={v.votingDaysLabel} top />
           <PreviewRow
@@ -406,6 +375,35 @@ function SoonTag() {
       }}
     >
       SOON
+    </span>
+  );
+}
+
+function ProtocolIcon({ protocol, size }) {
+  return (
+    <span
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        background: protocol.dot,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flex: 'none',
+      }}
+    >
+      <img
+        src={protocol.icon}
+        alt=""
+        onError={(event) => {
+          event.currentTarget.style.display = 'none';
+          event.currentTarget.nextElementSibling.style.display = 'inline';
+        }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+      />
+      <span style={{ display: 'none', color: '#fff', fontSize: size * 0.42, fontWeight: 900 }}>{protocol.badge}</span>
     </span>
   );
 }

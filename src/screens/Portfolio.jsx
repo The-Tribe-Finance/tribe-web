@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CHART_RANGES, HWM, tvlSeries, usd } from '../domain';
-import { C, Card, SectionHead, Stat, ScrollX } from '../ui';
+import { C, Card, SectionHead, Stat, ScrollX, TokenIcon } from '../ui';
 import { useIsMobile, useIsTablet } from '../useMediaQuery';
 
 const W = 560;
@@ -8,16 +8,16 @@ const Y_TOP = 24;
 const Y_BOT = 182;
 
 /** Maps the selected range's TVL slice into chart coordinates. */
-function useChart(nav, range) {
-  const full = tvlSeries(nav);
-  const n = Math.min(CHART_RANGES[range] || 13, full.length);
-  const slice = full.slice(full.length - n);
+function useChart(nav, range, history) {
+  const slice = tvlSeries(nav, history, range);
+  const n = slice.length;
+  const isFallback = n < 2;
   const tvls = slice.map((d) => d.tvl);
   const min = Math.min(...tvls);
   const span = Math.max(...tvls) - min || 1;
 
-  const xs = slice.map((_, i) => (n === 1 ? W : Math.round((i / (n - 1)) * W)));
-  const ys = slice.map((d) => Math.round(Y_BOT - ((d.tvl - min) / span) * (Y_BOT - Y_TOP)));
+  const xs = isFallback ? [0, W] : slice.map((_, i) => Math.round((i / (n - 1)) * W));
+  const ys = isFallback ? [104, 104] : slice.map((d) => Math.round(Y_BOT - ((d.tvl - min) / span) * (Y_BOT - Y_TOP)));
   const pts = xs.map((x, i) => `${x},${ys[i]}`);
 
   return {
@@ -26,7 +26,8 @@ function useChart(nav, range) {
     ys,
     linePts: pts.join(' '),
     areaPath: `M${pts.join(' L')} L${W},210 L0,210 Z`,
-    change: (slice[slice.length - 1].tvl / slice[0].tvl - 1) * 100,
+    change: slice.length > 1 && slice[0].tvl > 0 ? (slice[slice.length - 1].tvl / slice[0].tvl - 1) * 100 : 0,
+    isFallback,
   };
 }
 
@@ -38,10 +39,12 @@ export default function Portfolio(v) {
   const isTablet = useIsTablet();
 
   const range = state.chartRange;
-  const chart = useChart(v.NAV, range);
-  const hasHover = hover != null && hover < chart.slice.length;
+  const chart = useChart(v.NAV, range, v.vaultHistory);
+  const canInspectChart = !chart.isFallback;
+  const hasHover = canInspectChart && hover != null && hover < chart.slice.length;
 
   const onMove = (e) => {
+    if (!canInspectChart) return;
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width) return;
     const i = Math.round(((e.clientX - r.left) / r.width) * (chart.slice.length - 1));
@@ -51,10 +54,14 @@ export default function Portfolio(v) {
   return (
     <section style={{ padding: '40px 0 90px' }}>
       <SectionHead title={vaultName}>
-        <p style={{ maxWidth: 430, fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-          Every asset, trade and vote is transparent on-chain. Live prices, weights and unrealized P&L for the entire
-          fund.
-        </p>
+        <div style={{ maxWidth: 430, textAlign: 'right' }}>
+          <p style={{ fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+            Vault balances refresh from Surfpool every 15 seconds. RPC failures display zero balances.
+          </p>
+          <button onClick={v.refreshVault} style={{ marginTop: 8, border: 'none', background: 'transparent', color: C.green, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 800 }}>
+            {v.vaultSource === 'live' ? '● Live Surfpool · refresh' : '○ RPC unavailable · balances set to 0'}
+          </button>
+        </div>
       </SectionHead>
 
       <div
@@ -118,7 +125,7 @@ export default function Portfolio(v) {
           </div>
 
           <div
-            style={{ position: 'relative', cursor: 'crosshair' }}
+            style={{ position: 'relative', cursor: canInspectChart ? 'crosshair' : 'default' }}
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
           >
@@ -133,13 +140,7 @@ export default function Portfolio(v) {
                 <line key={y} x1="0" y1={y} x2="560" y2={y} stroke="#f0ead9" strokeWidth="1" />
               ))}
               <path d={chart.areaPath} fill="url(#greenFill2)" />
-              <polyline
-                points={chart.linePts}
-                fill="none"
-                stroke={C.greenMid}
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-              />
+              <polyline points={chart.linePts} fill="none" stroke={C.greenMid} strokeWidth="2.5" strokeLinejoin="round" />
               {hasHover ? (
                 <>
                   <line
@@ -164,12 +165,20 @@ export default function Portfolio(v) {
                 <circle cx={chart.xs.at(-1)} cy={chart.ys.at(-1)} r="4.5" fill={C.greenMid} />
               )}
               <text x="8" y="202" fontSize="10.5" fill={C.faint} fontFamily="Nunito">
-                {chart.slice[0].label}
+                {canInspectChart ? chart.slice[0].label : range === '24H' ? '24h ago' : 'No prior history'}
               </text>
-              <text x="495" y="202" fontSize="10.5" fill={C.faint} fontFamily="Nunito">
-                {chart.slice.at(-1).label}
-              </text>
+              {(canInspectChart || chart.isFallback) && (
+                <text x="495" y="202" fontSize="10.5" fill={C.faint} fontFamily="Nunito">
+                  {canInspectChart ? chart.slice.at(-1).label : 'Now'}
+                </text>
+              )}
             </svg>
+
+            <div style={{ fontSize: 11, color: C.faint, marginTop: 2 }}>
+              {canInspectChart
+                ? CHART_RANGES[range].caption
+                : `Current TVL shown as a flat line until a second live snapshot is available.`}
+            </div>
 
             {hasHover && (
               <div
@@ -280,7 +289,7 @@ export default function Portfolio(v) {
 }
 
 const COLS = '1.5fr 1fr 0.8fr 1fr 1fr 1.1fr 0.7fr 1.2fr';
-const HEADS = ['Token', 'Price', '24h', 'Holdings', 'Avg cost', 'Value', 'Weight', 'Unrl. P&L'];
+const HEADS = ['Token', 'Price', '24H', 'Holdings', 'Avg cost', 'Value', 'Weight', 'Unrl. P&L'];
 
 function HoldingsTable({ rows, onPropose }) {
   return (
@@ -339,23 +348,7 @@ function HoldingsTable({ rows, onPropose }) {
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                background: r.swatch,
-                color: '#fff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 10,
-                fontWeight: 900,
-                flex: 'none',
-              }}
-            >
-              {r.badge}
-            </span>
+            <TokenIcon logo={r.logo} swatch={r.swatch} badge={r.badge} size={26} />
             <span>
               <strong style={{ fontWeight: 800 }}>{r.sym}</strong>{' '}
               <span style={{ color: C.faint, fontSize: 11.5 }}>{r.name}</span>
