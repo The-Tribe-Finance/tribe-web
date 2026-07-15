@@ -8,3 +8,6 @@ dist
 
 # CodeGraph index (local, do not commit)
 .codegraph/
+
+# Local chain config (points at a private cluster; each dev supplies their own)
+src/chain/config.json

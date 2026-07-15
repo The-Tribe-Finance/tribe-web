@@ -1,43 +1,88 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Connection,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-} from '@solana/web3.js';
+import { deposit as vaultDeposit, CONFIG } from './chain/vault';
 
 /**
- * Phantom wallet integration.
+ * Multi-wallet integration.
  *
- * Connect, disconnect, and a real transaction-signing path against Solana
- * devnet. The vault program is not yet deployed to a public cluster, so the
- * signing helper here sends a minimal on-chain transaction (a 0-lamport
- * self-transfer with a memo-style instruction). It proves the full
- * build → Phantom-sign → send → confirm pipeline end to end; swapping in the
- * real `deposit` instruction is a one-function change once the vault is live.
+ * Solana wallets (Phantom, Backpack) can sign vault deposits against the
+ * configured cluster. MetaMask is EVM-only: it connects and shows its address,
+ * but cannot sign Solana transactions, so depositing through it is blocked.
  */
 
-export const RPC_URL = 'https://api.devnet.solana.com';
-const STORAGE_KEY = 'tribe.wallet.connected';
+export const RPC_URL = CONFIG.rpc;
+const STORAGE_KEY = 'tribe.wallet.id'; // remembers which wallet the user picked
 
-/** Phantom injects `window.phantom.solana` (older builds: `window.solana`). */
-function getProvider() {
-  if (typeof window === 'undefined') return null;
-  const p = window.phantom?.solana ?? window.solana;
-  return p?.isPhantom ? p : null;
+// ---------------------------------------------------------------------------
+// Wallet registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Each wallet knows how to find its injected provider, whether it speaks
+ * Solana, and where to install it. `chain: 'solana'` wallets can deposit;
+ * `chain: 'evm'` wallets connect for display only.
+ */
+export const WALLETS = [
+  {
+    id: 'phantom',
+    name: 'Phantom',
+    chain: 'solana',
+    installUrl: 'https://phantom.app/',
+    getProvider: () => {
+      const p = window.phantom?.solana ?? window.solana;
+      return p?.isPhantom ? p : null;
+    },
+  },
+  {
+    id: 'backpack',
+    name: 'Backpack',
+    chain: 'solana',
+    installUrl: 'https://backpack.app/',
+    getProvider: () => {
+      const p = window.backpack ?? window.xnft?.solana;
+      return p?.isBackpack ? p : null;
+    },
+  },
+  {
+    id: 'metamask',
+    name: 'MetaMask',
+    chain: 'evm',
+    installUrl: 'https://metamask.io/',
+    getProvider: () => {
+      const eth = window.ethereum;
+      if (!eth) return null;
+      // With several EVM wallets installed, ethereum.providers holds them all.
+      if (Array.isArray(eth.providers)) {
+        return eth.providers.find((p) => p.isMetaMask) ?? null;
+      }
+      return eth.isMetaMask ? eth : null;
+    },
+  },
+];
+
+export function walletById(id) {
+  return WALLETS.find((w) => w.id === id) ?? null;
+}
+
+/** Is a wallet's extension currently present in the browser? */
+export function isInstalled(wallet) {
+  try {
+    return !!wallet.getProvider();
+  } catch {
+    return false;
+  }
 }
 
 /**
- * The extension injects its provider asynchronously, sometimes after the app
- * has already mounted. Poll briefly so a click that lands early still finds it.
+ * Providers are injected asynchronously; poll briefly so a connect that fires
+ * right after mount still finds the extension.
  */
-function waitForProvider(timeoutMs = 3000) {
+function waitForProvider(wallet, timeoutMs = 3000) {
   return new Promise((resolve) => {
-    const found = getProvider();
+    const found = wallet.getProvider();
     if (found) return resolve(found);
     const started = Date.now();
     const id = setInterval(() => {
-      const p = getProvider();
+      const p = wallet.getProvider();
       if (p || Date.now() - started > timeoutMs) {
         clearInterval(id);
         resolve(p);
@@ -46,165 +91,204 @@ function waitForProvider(timeoutMs = 3000) {
   });
 }
 
-export function shortAddress(base58, lead = 4, tail = 4) {
-  if (!base58) return '';
-  return `${base58.slice(0, lead)}…${base58.slice(-tail)}`;
+export function shortAddress(addr, lead = 4, tail = 4) {
+  if (!addr) return '';
+  return `${addr.slice(0, lead)}…${addr.slice(-tail)}`;
 }
 
-/**
- * Wallet state + actions. Returns everything the UI needs to render a connect
- * button and, later, sign transactions.
- */
+// ---------------------------------------------------------------------------
+// Connect helpers, per chain
+// ---------------------------------------------------------------------------
+
+async function connectSolana(provider) {
+  const { publicKey } = await provider.connect();
+  return publicKey.toBase58();
+}
+
+async function connectEvm(provider) {
+  const accounts = await provider.request({ method: 'eth_requestAccounts' });
+  if (!accounts?.length) throw new Error('No account returned.');
+  return accounts[0];
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useWallet(onEvent) {
+  const [walletId, setWalletId] = useState(null);
   const [address, setAddress] = useState(null);
   const [connecting, setConnecting] = useState(false);
-  const [installed, setInstalled] = useState(false);
 
   const emit = useCallback(
     (kind, message) => onEvent?.({ kind, message }),
     [onEvent],
   );
 
-  // Detect Phantom (allowing for late injection), wire its account events,
-  // and restore a prior session.
+  const active = walletId ? walletById(walletId) : null;
+  const isEvm = active?.chain === 'evm';
+
+  // Restore a prior session for whichever wallet was last used.
   useEffect(() => {
-    let cleanup = () => {};
+    const savedId = localStorage.getItem(STORAGE_KEY);
+    const wallet = savedId ? walletById(savedId) : null;
+    if (!wallet) return;
     let cancelled = false;
 
-    waitForProvider().then((provider) => {
-      if (cancelled) return;
-      setInstalled(!!provider);
-      if (!provider) return;
-      cleanup = attach(provider);
+    waitForProvider(wallet).then(async (provider) => {
+      if (cancelled || !provider) return;
+      try {
+        if (wallet.chain === 'solana') {
+          // Phantom/Backpack remember the grant — reconnect silently.
+          const res = await provider.connect({ onlyIfTrusted: true });
+          if (cancelled) return;
+          setWalletId(wallet.id);
+          setAddress(res.publicKey.toBase58());
+        } else {
+          const accounts = await provider.request({ method: 'eth_accounts' });
+          if (cancelled || !accounts?.length) return;
+          setWalletId(wallet.id);
+          setAddress(accounts[0]);
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     });
 
     return () => {
       cancelled = true;
-      cleanup();
     };
-
-    function attach(provider) {
-
-    const onConnect = (pk) => setAddress(pk?.toBase58?.() ?? provider.publicKey?.toBase58() ?? null);
-    const onDisconnect = () => {
-      setAddress(null);
-      localStorage.removeItem(STORAGE_KEY);
-    };
-    const onAccountChanged = (pk) => setAddress(pk ? pk.toBase58() : null);
-
-    provider.on('connect', onConnect);
-    provider.on('disconnect', onDisconnect);
-    provider.on('accountChanged', onAccountChanged);
-
-    // Silent reconnect if the user connected before (Phantom remembers the grant).
-    if (localStorage.getItem(STORAGE_KEY)) {
-      provider.connect({ onlyIfTrusted: true }).catch(() => {
-        localStorage.removeItem(STORAGE_KEY);
-      });
-    }
-
-    return () => {
-      provider.off('connect', onConnect);
-      provider.off('disconnect', onDisconnect);
-      provider.off('accountChanged', onAccountChanged);
-    };
-    }
   }, []);
 
-  const connect = useCallback(async () => {
-    const provider = (await waitForProvider()) || getProvider();
-    if (!provider) {
-      window.open('https://phantom.app/', '_blank', 'noopener,noreferrer');
-      emit('error', 'Phantom not found — install the Phantom extension, then reload.');
-      return;
+  // Wire account/disconnect events on the active provider.
+  useEffect(() => {
+    if (!active) return;
+    const provider = active.getProvider();
+    if (!provider) return;
+
+    if (active.chain === 'solana') {
+      const onDisconnect = () => {
+        setAddress(null);
+        setWalletId(null);
+        localStorage.removeItem(STORAGE_KEY);
+      };
+      const onAccountChanged = (pk) => setAddress(pk ? pk.toBase58() : null);
+      provider.on?.('disconnect', onDisconnect);
+      provider.on?.('accountChanged', onAccountChanged);
+      return () => {
+        provider.off?.('disconnect', onDisconnect);
+        provider.off?.('accountChanged', onAccountChanged);
+      };
     }
-    if (address) return;
-    setConnecting(true);
-    try {
-      const { publicKey } = await provider.connect();
-      const base58 = publicKey.toBase58();
-      setAddress(base58);
-      localStorage.setItem(STORAGE_KEY, '1');
-      emit('connected', `Connected — ${shortAddress(base58)}`);
-    } catch (err) {
-      // User rejected the prompt, or the request failed.
-      emit('error', err?.message || 'Connection request was rejected.');
-    } finally {
-      setConnecting(false);
-    }
-  }, [address, emit]);
+
+    const onAccountsChanged = (accts) => {
+      if (!accts?.length) {
+        setAddress(null);
+        setWalletId(null);
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        setAddress(accts[0]);
+      }
+    };
+    provider.on?.('accountsChanged', onAccountsChanged);
+    return () => provider.removeListener?.('accountsChanged', onAccountsChanged);
+  }, [active]);
+
+  /** Connect a specific wallet by id (called from the picker modal). */
+  const connect = useCallback(
+    async (id) => {
+      const wallet = walletById(id);
+      if (!wallet) return;
+      const provider = await waitForProvider(wallet);
+      if (!provider) {
+        window.open(wallet.installUrl, '_blank', 'noopener,noreferrer');
+        emit('error', `${wallet.name} not found — install it, then reload.`);
+        return;
+      }
+      setConnecting(true);
+      try {
+        const addr =
+          wallet.chain === 'solana'
+            ? await connectSolana(provider)
+            : await connectEvm(provider);
+        setWalletId(wallet.id);
+        setAddress(addr);
+        localStorage.setItem(STORAGE_KEY, wallet.id);
+        if (wallet.chain === 'evm') {
+          emit(
+            'connected',
+            `${wallet.name} connected (Ethereum) — deposits need a Solana wallet.`,
+          );
+        } else {
+          emit('connected', `${wallet.name} connected — ${shortAddress(addr)}`);
+        }
+      } catch (err) {
+        emit('error', err?.message || 'Connection request was rejected.');
+      } finally {
+        setConnecting(false);
+      }
+    },
+    [emit],
+  );
 
   const disconnect = useCallback(async () => {
-    const provider = getProvider();
     try {
-      await provider?.disconnect();
+      await active?.getProvider()?.disconnect?.();
+    } catch {
+      /* EVM wallets have no disconnect; ignore. */
     } finally {
       setAddress(null);
+      setWalletId(null);
       localStorage.removeItem(STORAGE_KEY);
       emit('disconnected', 'Wallet disconnected.');
     }
-  }, [emit]);
+  }, [active, emit]);
 
-  /**
-   * Build a transaction, have Phantom sign it, send it to devnet, and wait for
-   * confirmation. Returns the signature.
-   *
-   * `amountUsd` is accepted so the caller (the deposit flow) can pass through
-   * intent for display; on-chain this sends a 0-lamport self-transfer as a
-   * stand-in until the vault program is deployed.
-   */
-  const signAndSend = useCallback(
-    async ({ amountUsd } = {}) => {
-      const provider = getProvider();
-      if (!provider || !address) {
-        emit('error', 'Connect your wallet first.');
+  /** Deposit USDC. Only Solana wallets can sign; EVM wallets are rejected. */
+  const depositUsdc = useCallback(
+    async (amountUi) => {
+      if (!active || !address) {
+        emit('error', 'Connect a wallet first.');
         return null;
       }
-      const connection = new Connection(RPC_URL, 'confirmed');
-      const from = new PublicKey(address);
-      try {
-        emit('pending', 'Awaiting signature in Phantom…');
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash('confirmed');
-
-        // Placeholder instruction: a 0-lamport self-transfer. Replace with the
-        // vault `deposit` instruction once the program is on a public cluster.
-        const tx = new Transaction({
-          feePayer: from,
-          blockhash,
-          lastValidBlockHeight,
-        }).add(
-          SystemProgram.transfer({ fromPubkey: from, toPubkey: from, lamports: 0 }),
-        );
-
-        const signed = await provider.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        emit('pending', 'Transaction sent — confirming…');
-        await connection.confirmTransaction(
-          { signature: sig, blockhash, lastValidBlockHeight },
-          'confirmed',
-        );
+      if (active.chain !== 'solana') {
         emit(
-          'confirmed',
-          `Confirmed${amountUsd ? ` · ${amountUsd}` : ''} — ${shortAddress(sig, 6, 6)}`,
+          'error',
+          `${active.name} is an Ethereum wallet and cannot sign Solana transactions. Connect Phantom or Backpack to deposit.`,
         );
+        return null;
+      }
+      if (!(amountUi > 0)) {
+        emit('error', 'Enter an amount to deposit.');
+        return null;
+      }
+      try {
+        emit('pending', `Awaiting signature in ${active.name}…`);
+        const provider = active.getProvider();
+        const sig = await vaultDeposit({ provider, address, amountUi });
+        emit('confirmed', `Deposited ${amountUi} USDC — ${shortAddress(sig, 6, 6)}`);
         return sig;
       } catch (err) {
-        emit('error', err?.message || 'Transaction failed or was rejected.');
+        emit('error', err?.message || 'Deposit failed or was rejected.');
         return null;
       }
     },
-    [address, emit],
+    [active, address, emit],
   );
 
+  const explorerCluster = CONFIG.cluster === 'devnet' ? '?cluster=devnet' : '';
+
   return {
+    walletId,
+    walletName: active?.name ?? null,
     address,
     connected: !!address,
     connecting,
-    installed,
-    connect,
+    isEvm,
+    canDeposit: active?.chain === 'solana',
+    connect, // connect(id)
     disconnect,
-    signAndSend,
-    explorerUrl: (sig) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`,
+    signAndSend: ({ amountUi } = {}) => depositUsdc(amountUi),
+    explorerUrl: (sig) => `https://explorer.solana.com/tx/${sig}${explorerCluster}`,
   };
 }

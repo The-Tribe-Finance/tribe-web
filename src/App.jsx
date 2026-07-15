@@ -21,7 +21,7 @@ import {
   usd,
   usdCompact,
 } from './domain';
-import { Nav, Toast } from './ui';
+import { Nav, Toast, WalletModal } from './ui';
 import { useWallet, shortAddress } from './wallet';
 import Landing from './screens/Landing';
 import Portfolio from './screens/Portfolio';
@@ -58,8 +58,9 @@ export default function App() {
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  // Real Phantom wallet. Its lifecycle events surface through the same toast.
+  // Real multi-wallet support. Lifecycle events surface through the same toast.
   const wallet = useWallet((e) => showToast(e.message));
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   // Keep the mock state's connection flag in sync with the real wallet, so the
   // screens that gate on `walletConnected` continue to work unchanged.
@@ -92,8 +93,17 @@ export default function App() {
               : 'Connect Wallet'
         }
         connected={wallet.connected}
-        onConnect={wallet.connect}
+        onConnect={() => setWalletModalOpen(true)}
         onDisconnect={wallet.disconnect}
+      />
+
+      <WalletModal
+        open={walletModalOpen}
+        onClose={() => setWalletModalOpen(false)}
+        onPick={(id) => {
+          setWalletModalOpen(false);
+          wallet.connect(id);
+        }}
       />
 
       {isLanding ? (
@@ -486,16 +496,18 @@ function useDerived(s, patch, showToast, wallet) {
     // ---- deposit / redeem ----
     const depAmt = parseFloat(s.depositAmt) || 0;
     const walletConnected = !!wallet?.connected;
-    const depositDisabled = !(depAmt > 0 && depAmt <= s.walletUsdc) || !walletConnected;
+    // The real USDC balance lives on-chain, not in the mock ledger, so the only
+    // gate here is a positive amount plus a connected wallet.
+    const depositDisabled = !(depAmt > 0) || !walletConnected;
     const confirmDeposit = async () => {
-      if (depAmt <= 0 || depAmt > s.walletUsdc) return;
+      if (depAmt <= 0) return;
       if (!walletConnected) {
         showToast('Connect your Phantom wallet to deposit.');
         return;
       }
-      // Real on-chain step: Phantom signs and the transaction is sent to devnet.
+      // Real on-chain deposit: Phantom signs, the vault mints shares.
       // The mock ledger only advances once the transaction confirms.
-      const sig = await wallet.signAndSend({ amountUsd: usd(depAmt) });
+      const sig = await wallet.signAndSend({ amountUi: depAmt });
       if (!sig) return;
       const mint = depAmt / sharePrice;
       patch((cur) => ({

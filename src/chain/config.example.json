@@ -1,0 +1,21 @@
+{
+  "cluster": "devnet",
+  "rpc": "https://api.devnet.solana.com",
+  "vaultProgram": "<vaultProgram pubkey>",
+  "adapterSwapProgram": "<adapterSwapProgram pubkey>",
+  "jupiterProgram": "<jupiterProgram pubkey>",
+  "vault": "<vault pubkey>",
+  "vaultAuthority": "<vaultAuthority pubkey>",
+  "shareMint": "<shareMint pubkey>",
+  "usdcMint": "<usdcMint pubkey>",
+  "wsolMint": "<wsolMint pubkey>",
+  "usdcOracle": "<usdcOracle pubkey>",
+  "solOracle": "<solOracle pubkey>",
+  "usdcAsset": "<usdcAsset pubkey>",
+  "wsolAsset": "<wsolAsset pubkey>",
+  "vaultUsdcAta": "<vaultUsdcAta pubkey>",
+  "vaultWsolAta": "<vaultWsolAta pubkey>",
+  "adapterPda": "<adapterPda pubkey>",
+  "swapCapability": "<swapCapability pubkey>",
+  "wallet": "<your wallet pubkey>"
+}

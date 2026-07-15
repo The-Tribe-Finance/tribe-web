@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from './icons';
 import { useIsMobile, useIsTablet } from './useMediaQuery';
+import { WALLETS, isInstalled } from './wallet';
 
 export const C = {
   cream: '#faf6ec',
@@ -123,7 +124,7 @@ export function Nav({ tab, setTab, walletLabel, connected, onConnect, onDisconne
     <HoverButton
       onClick={connected ? onDisconnect : onConnect}
       hoverBg={connected ? C.down : C.greenDark}
-      title={connected ? 'Click to disconnect' : 'Connect Phantom'}
+      title={connected ? 'Click to disconnect' : 'Connect a wallet'}
       style={{
         border: 'none',
         fontSize: isMobile ? 13 : 14,
@@ -275,6 +276,137 @@ export function ScrollX({ minWidth = 640, children, style }) {
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', ...style }}>
       <div style={{ minWidth }}>{children}</div>
+    </div>
+  );
+}
+
+/** A small square badge with a wallet's initial, used in the picker. */
+function WalletGlyph({ name, chain }) {
+  return (
+    <span
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: 11,
+        flex: 'none',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 900,
+        fontSize: 16,
+        color: '#fff',
+        background: chain === 'solana' ? C.green : '#c2762e',
+      }}
+    >
+      {name[0]}
+    </span>
+  );
+}
+
+/**
+ * The wallet picker. Lists every wallet Tribe supports, shows whether each is
+ * installed, and labels the chain. Solana wallets can deposit; MetaMask (EVM)
+ * connects for display only.
+ */
+export function WalletModal({ open, onClose, onPick }) {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 60,
+        background: 'rgba(40,32,20,.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Connect a wallet"
+        style={{
+          background: '#fff',
+          borderRadius: 22,
+          padding: 24,
+          width: '100%',
+          maxWidth: 420,
+          boxShadow: '0 24px 60px rgba(40,32,20,.28)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>Connect a wallet</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              marginLeft: 'auto',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontSize: 22,
+              lineHeight: 1,
+              color: C.soft,
+              padding: 4,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+          Deposits are settled on Solana. Ethereum wallets can connect, but cannot
+          sign vault transactions.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {WALLETS.map((w) => {
+            const installed = isInstalled(w);
+            return (
+              <button
+                key={w.id}
+                onClick={() => onPick(w.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  width: '100%',
+                  textAlign: 'left',
+                  font: 'inherit',
+                  cursor: 'pointer',
+                  background: C.cream,
+                  border: `1.5px solid ${C.line}`,
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                }}
+              >
+                <WalletGlyph name={w.name} chain={w.chain} />
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: 'block', fontWeight: 800, fontSize: 15 }}>{w.name}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: C.soft, fontWeight: 600 }}>
+                    {w.chain === 'solana' ? 'Solana · can deposit' : 'Ethereum · view only'}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: installed ? C.green : C.faint,
+                    background: installed ? C.sage : 'transparent',
+                    border: installed ? 'none' : `1px solid ${C.line}`,
+                    padding: '3px 10px',
+                    borderRadius: 999,
+                  }}
+                >
+                  {installed ? 'Detected' : 'Install'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
