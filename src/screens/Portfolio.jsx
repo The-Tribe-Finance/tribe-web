@@ -94,16 +94,7 @@ export default function Portfolio(v) {
 
   return (
     <section style={{ padding: '40px 0 90px' }}>
-      <SectionHead title={vaultName}>
-        <div style={{ maxWidth: 430, textAlign: 'right' }}>
-          <p style={{ fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-            Vault balances refresh from Surfpool every 15 seconds. RPC failures display zero balances.
-          </p>
-          <button onClick={v.refreshVault} style={{ marginTop: 8, border: 'none', background: 'transparent', color: C.green, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 800 }}>
-            {v.vaultSource === 'live' ? '● Live Surfpool · refresh' : '○ RPC unavailable · balances set to 0'}
-          </button>
-        </div>
-      </SectionHead>
+      <SectionHead title={vaultName} />
 
       <div
         style={{
@@ -112,7 +103,12 @@ export default function Portfolio(v) {
           gap: 16,
         }}
       >
-        <Stat label="Total Value Locked" value={navFmt} sub="▲ +4.8% this month" subColor={C.up} />
+        <Stat
+          label="Total Value Locked"
+          value={navFmt}
+          sub={`${chart.change >= 0 ? '▲ +' : '▼ '}${chart.change.toFixed(2)}% (${range})`}
+          subColor={chart.change >= 0 ? C.up : C.down}
+        />
         <Stat label="NAV / share" value={sharePriceFmt} sub={`High-water mark ${HWM.toFixed(3)}`} />
         <Stat
           label="Your Position"
@@ -295,7 +291,7 @@ export default function Portfolio(v) {
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 999, background: allocActive.color }} />
-                  <strong>{allocActive.sym}</strong> <span style={{ color: '#cdbfa4' }}>{allocActive.wFmt}</span>
+                  <strong>{allocActive.label ?? allocActive.sym}</strong> <span style={{ color: '#cdbfa4' }}>{allocActive.wFmt}</span>
                 </span>
                 <span style={{ color: '#cdbfa4' }}> · {usd(Math.round(allocActive.value))}</span>
               </div>
@@ -322,7 +318,7 @@ export default function Portfolio(v) {
                 }}
               >
                 <span style={{ width: 10, height: 10, borderRadius: 999, background: a.color }} />
-                <span style={{ fontWeight: 800 }}>{a.sym}</span>
+                <span style={{ fontWeight: 800 }}>{a.label ?? a.sym}</span>
                 <span style={{ color: C.soft, fontWeight: 700 }}>{a.wFmt}</span>
               </div>
             ))}
@@ -336,14 +332,30 @@ export default function Portfolio(v) {
   );
 }
 
-const COLS = '1.5fr 1fr 0.8fr 1fr 1fr 1.1fr 0.7fr 1.2fr';
-const HEADS = ['Token', 'Price', '24H', 'Holdings', 'Avg cost', 'Value', 'Weight', 'Unrl. P&L'];
+const COLS = '1.5fr 1fr 0.8fr 1fr 1fr 1fr 1.1fr 0.7fr 1.2fr';
+const HEADS = ['Token', 'Price', '24H', 'Holdings', 'Buy price', 'Avg cost', 'Value', 'Weight', 'Unrl. P&L'];
+
+// Show at most this many token rows before collapsing behind a toggle. USDC is
+// pinned to the bottom and never hidden — it is usually the largest line.
+const HOLDINGS_PREVIEW = 12;
 
 function HoldingsTable({ rows, onPropose }) {
+  const [expanded, setExpanded] = useState(false);
+  const pinned = rows.filter((r) => r.sym === 'USDC');
+  const tokens = rows.filter((r) => r.sym !== 'USDC');
+  const collapsible = tokens.length > HOLDINGS_PREVIEW;
+  const shownTokens = collapsible && !expanded ? tokens.slice(0, HOLDINGS_PREVIEW) : tokens;
+  const visible = [...shownTokens, ...pinned];
+  const hidden = collapsible && !expanded ? tokens.slice(HOLDINGS_PREVIEW) : [];
+  const hiddenValue = hidden.reduce((sum, r) => sum + (Number(String(r.valueFmt).replace(/[^0-9.]/g, '')) || 0), 0);
+
   return (
     <Card style={{ marginTop: 16 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Holdings — token tracking</h3>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>
+          Holdings — token tracking
+          <span style={{ color: C.faint, fontWeight: 700, fontSize: 12.5, marginLeft: 8 }}>{rows.length} tokens</span>
+        </h3>
         <button
           onClick={onPropose}
           style={{
@@ -360,7 +372,7 @@ function HoldingsTable({ rows, onPropose }) {
         </button>
       </div>
 
-      <ScrollX minWidth={720}>
+      <ScrollX minWidth={820}>
       <div
         style={{
           display: 'grid',
@@ -382,36 +394,109 @@ function HoldingsTable({ rows, onPropose }) {
         ))}
       </div>
 
-      {rows.map((r) => (
-        <div
-          key={r.sym}
+      {visible.map((r, i) => {
+        // Section header when the category changes (Crypto → Stocks → Cash).
+        const showGroup = r.cat && r.cat !== visible[i - 1]?.cat;
+        return (
+        <div key={r.sym}>
+          {showGroup && (
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                color: C.faint,
+                padding: i === 0 ? '4px 0 2px' : '16px 0 2px',
+              }}
+            >
+              {r.cat}
+            </div>
+          )}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: COLS,
+              gap: 10,
+              alignItems: 'center',
+              fontSize: 13,
+              padding: '12px 0',
+              borderBottom: `1px solid ${C.rule}`,
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <TokenIcon logo={r.logo} swatch={r.swatch} badge={r.badge} size={30} />
+              <span>
+                <strong style={{ fontWeight: 800 }}>{r.sym}</strong>{' '}
+                <span style={{ color: C.faint, fontSize: 11.5 }}>{r.name}</span>
+              </span>
+            </span>
+            <span style={{ textAlign: 'right', fontWeight: 700 }}>{r.priceFmt}</span>
+            <span style={{ textAlign: 'right', fontWeight: 800, color: r.chgColor }}>
+              {r.sym !== 'USDC' && (r.chgUp ? '▲ ' : '▼ ')}{r.chgFmt}
+            </span>
+            <span style={{ textAlign: 'right', color: C.muted }}>{r.qtyFmt}</span>
+            <span style={{ textAlign: 'right', color: C.soft }}>{r.buyFmt}</span>
+            <span style={{ textAlign: 'right', color: C.soft }}>{r.avgFmt}</span>
+            <span style={{ textAlign: 'right', fontWeight: 800 }}>{r.valueFmt}</span>
+            <span style={{ textAlign: 'right', color: C.soft }}>{r.weightFmt}</span>
+            <span style={{ textAlign: 'right' }}>
+              {r.pnlFmt === '—' ? (
+                <span style={{ color: C.faint }}>—</span>
+              ) : (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    fontWeight: 800,
+                    fontSize: 12,
+                    color: r.pnlColor,
+                    background: r.pnlUp ? C.sage : '#f6e3dd',
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                  }}
+                >
+                  {r.pnlFmt}
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+        );
+      })}
+      </ScrollX>
+
+      {collapsible && (
+        <button
+          onClick={() => setExpanded((prev) => !prev)}
           style={{
-            display: 'grid',
-            gridTemplateColumns: COLS,
-            gap: 10,
-            alignItems: 'center',
-            fontSize: 13,
+            width: '100%',
+            marginTop: 12,
             padding: '11px 0',
-            borderBottom: `1px solid ${C.rule}`,
+            border: 'none',
+            borderRadius: 10,
+            background: C.rule,
+            cursor: 'pointer',
+            font: 'inherit',
+            fontSize: 12.5,
+            fontWeight: 800,
+            color: C.green,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
           }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <TokenIcon logo={r.logo} swatch={r.swatch} badge={r.badge} size={26} />
-            <span>
-              <strong style={{ fontWeight: 800 }}>{r.sym}</strong>{' '}
-              <span style={{ color: C.faint, fontSize: 11.5 }}>{r.name}</span>
-            </span>
-          </span>
-          <span style={{ textAlign: 'right', fontWeight: 700 }}>{r.priceFmt}</span>
-          <span style={{ textAlign: 'right', fontWeight: 800, color: r.chgColor }}>{r.chgFmt}</span>
-          <span style={{ textAlign: 'right', color: C.muted }}>{r.qtyFmt}</span>
-          <span style={{ textAlign: 'right', color: C.soft }}>{r.avgFmt}</span>
-          <span style={{ textAlign: 'right', fontWeight: 800 }}>{r.valueFmt}</span>
-          <span style={{ textAlign: 'right', color: C.soft }}>{r.weightFmt}</span>
-          <span style={{ textAlign: 'right', fontWeight: 800, color: r.pnlColor }}>{r.pnlFmt}</span>
-        </div>
-      ))}
-      </ScrollX>
+          {expanded ? (
+            <>Show less ↑</>
+          ) : (
+            <>
+              Show {hidden.length} more token{hidden.length === 1 ? '' : 's'}
+              <span style={{ color: C.faint, fontWeight: 700 }}>· {usd(hiddenValue)}</span>
+              ↓
+            </>
+          )}
+        </button>
+      )}
     </Card>
   );
 }

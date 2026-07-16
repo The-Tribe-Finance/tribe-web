@@ -34,15 +34,18 @@ export const TOKENS = {
   ABTx: { name: 'Abbott', price: 360.00, chg: 3.0, sw: '#7d9a5c', badge: 'A', logo: STOCK_LOGOS['ABTx'] },
   ABBVx: { name: 'AbbVie', price: 397.00, chg: -3.7, sw: '#3e5c2f', badge: 'A', logo: STOCK_LOGOS['ABBVx'] },
   BACx: { name: 'Bank of America', price: 434.00, chg: -2.4, sw: '#a8503a', badge: 'B', logo: STOCK_LOGOS['BACx'] },
-  // Verified token-list artwork, consumed from Jupiter/Solana's token metadata source.
-  BTC: { name: 'Bitcoin', price: 118450, chg: 1.8, sw: '#f7931a', badge: '₿', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E/logo.png' },
-  ETH: { name: 'Ether', price: 3625, chg: 2.2, sw: '#627eea', badge: 'Ξ', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png' },
+  // Exact mint + artwork are verified against Jupiter's token registry.
+  // These are Solana-wrapped representations, not native Bitcoin/Ethereum.
+  WBTC: { name: 'Wrapped BTC (Portal)', price: 0, chg: 0, sw: '#f7931a', badge: '₿', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh/logo.png' },
+  ETH: { name: 'Ether (Portal)', price: 0, chg: 0, sw: '#627eea', badge: 'Ξ', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png' },
   SOL: { name: 'Solana', price: 214.3, chg: 3.1, sw: '#6a8caf', badge: 'S', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' },
   JUP: { name: 'Jupiter', price: 0, chg: 0, sw: '#8d78f2', badge: 'J', logo: 'https://static.jup.ag/jup/icon.png' },
   JitoSOL: { name: 'Jito Staked SOL', price: 0, chg: 0, sw: '#35a8b6', badge: 'J', logo: 'https://storage.googleapis.com/token-metadata/JitoSOL-256.png' },
   mSOL: { name: 'Marinade Staked SOL', price: 0, chg: 0, sw: '#f08a5d', badge: 'm', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png' },
   PYTH: { name: 'Pyth Network', price: 0, chg: 0, sw: '#7f5af0', badge: 'P', logo: 'https://pyth.network/token.svg' },
   RENDER: { name: 'Render Token', price: 0, chg: 0, sw: '#d9524f', badge: 'R', logo: 'https://shdw-drive.genesysgo.net/5zseP54TGrcz9C8HdjZwJJsZ6f3VbP11p1abwKWGykZH/rndr.png' },
+  HYPE: { name: 'HYPE', price: 0, chg: 0, sw: '#47b8a1', badge: 'H', logo: 'https://arweave.net/QBRdRop8wI4PpScSRTKyibv-fQuYBua-WOvC7tuJyJo' },
+  wXRP: { name: 'Wrapped XRP', price: 0, chg: 0, sw: '#252a34', badge: 'X', logo: 'https://cdn.prod.website-files.com/61a0a50381fdccb6c37927e5/692521b55b7c02a5da964dc3_wXRP-token-logo.svg' },
   USDe: { name: 'Ethena USDe', price: 1, chg: 0, sw: '#4a9970', badge: 'U', logo: 'https://arweave.net/qeSnRm_FIyp_khPfmg8o1zQeGO4AczDaEKe8jEUOzL4' },
   USDC: { name: 'USD Coin', price: 1, chg: 0, sw: '#2775ca', badge: '$', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png' },
   USDT: { name: 'Tether USD', price: 1, chg: 0, sw: '#26a17b', badge: '₮', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png' },
@@ -81,7 +84,7 @@ export const ACTION_PROTOS = {
 };
 
 export const XSTOCKS = ['AAPLx', 'NVDAx', 'MSFTx', 'GOOGLx', 'TSLAx', 'AMZNx', 'METAx', 'COINx', 'MSTRx', 'AMDx', 'PLTRx', 'SPYx', 'QQQx', 'NFLXx', 'CRCLx', 'HOODx', 'GLDx', 'JNJx', 'JPMx', 'WMTx', 'ORCLx', 'KOx', 'PGx', 'CSCOx', 'PEPx', 'MRKx', 'AVGOx', 'MCDx', 'CVXx', 'LLYx', 'ABTx', 'ABBVx', 'BACx'];
-export const CORE_CRYPTO = ['BTC', 'ETH', 'SOL', 'JitoSOL', 'mSOL', 'JUP', 'RENDER', 'PYTH'];
+export const CORE_CRYPTO = ['WBTC', 'ETH', 'SOL', 'JitoSOL', 'mSOL', 'JUP', 'RENDER', 'PYTH', 'HYPE', 'wXRP'];
 export const STABLECOINS = ['USDC', 'USDT', 'USDe'];
 export const INDEX_TOKENS = ['SPYx', 'QQQx', 'GLDx'];
 
@@ -89,8 +92,8 @@ export const INDEX_TOKENS = ['SPYx', 'QQQx', 'GLDx'];
 // makes address search deterministic and prevents a similarly named token from
 // appearing as a valid proposal target.
 export const TOKEN_MINTS = {
-  BTC: '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E',
-  // Wrapped Ether (Portal) is the liquid Solana representation routed by Jupiter.
+  WBTC: '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh',
+  // Ether (Portal) is the liquid Solana representation routed by Jupiter.
   ETH: '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
   SOL: 'So11111111111111111111111111111111111111112',
   JUP: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
@@ -98,6 +101,8 @@ export const TOKEN_MINTS = {
   mSOL: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',
   PYTH: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3',
   RENDER: 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof',
+  HYPE: '98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g',
+  wXRP: '6UpQcMAb5xMzxc7ZfPaVMgx3KqsvKZdT5U718BzD5We2',
   USDe: 'DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
@@ -185,7 +190,7 @@ export const RAW_ANALYSTS = [
     record: '14 of 17 proposals passed',
     bio: 'Quant-driven momentum analyst tracking on-chain flows and earnings momentum across tokenized equities and majors.',
     history: [
-      { date: 'Jul 02', action: 'Sell BTC', detail: 'Trimmed 15% after a +41% quarterly run', result: '+$482k realized', up: true },
+      { date: 'Jul 02', action: 'Sell WBTC', detail: 'Trimmed 15% after a +41% quarterly run', result: '+$482k realized', up: true },
       { date: 'Jun 05', action: 'Rebalance NVDAx', detail: 'Lifted target weight 25% → 30%', result: '+8.2% since', up: true },
       { date: 'May 14', action: 'Buy SOL', detail: 'Opened a 4% position pre-Firedancer', result: '+22.4%', up: true },
       { date: 'Apr 12', action: 'Buy NVDAx', detail: 'Added on post-earnings strength', result: '+33.7%', up: true },
@@ -226,7 +231,7 @@ export const RAW_ANALYSTS = [
     history: [
       { date: 'Jun 21', action: 'MEME basket', detail: 'Proposal rejected by governance', result: 'Not executed', up: false },
       { date: 'May 09', action: 'Buy TSLAx', detail: 'Momentum entry pre-delivery data', result: '−4.1%', up: false },
-      { date: 'Mar 28', action: 'Buy BTC', detail: 'Added near cycle lows', result: '+28.8%', up: true },
+      { date: 'Mar 28', action: 'Buy WBTC', detail: 'Added near cycle lows', result: '+28.8%', up: true },
     ],
   },
 ];
@@ -277,7 +282,7 @@ export const INITIAL_STATE = {
     { sym: 'AAPLx', qty: 10000, avgCost: 205.0 },
     { sym: 'MSFTx', qty: 4075, avgCost: 430.1 },
     { sym: 'GOOGLx', qty: 7860, avgCost: 170.2 },
-    { sym: 'BTC', qty: 9.19, avgCost: 92000 },
+    { sym: 'WBTC', qty: 9.19, avgCost: 92000 },
     { sym: 'SOL', qty: 4185, avgCost: 172.5 },
   ],
   proposals: [
@@ -312,11 +317,11 @@ export const INITIAL_STATE = {
     {
       id: 'TRB-012',
       kind: 'sell',
-      token: 'BTC',
+      token: 'WBTC',
       amountUsd: 372540,
-      title: 'Take profit: sell part of the BTC position',
+      title: 'Take profit: sell part of the WBTC position',
       summary:
-        'Trim BTC after a 41% quarterly run to restore the 20% target weight. Proceeds held in USDC pending new proposals.',
+        'Trim WBTC after a 41% quarterly run to restore the 20% target weight. Proceeds held in USDC pending new proposals.',
       analyst: 'Minh Tran',
       status: 'executed',
       for: 7120000,
@@ -337,18 +342,18 @@ export const INITIAL_STATE = {
     },
   ],
   executions: [
-    { id: 'TRB-012', action: 'Sell part of BTC position', size: '$372,540', route: 'Jupiter → Raydium', date: 'Jul 02' },
+    { id: 'TRB-012', action: 'Sell part of WBTC position', size: '$372,540', route: 'Jupiter → Raydium', date: 'Jul 02' },
     { id: 'TRB-010', action: 'Buy AAPLx', size: '$618,000', route: 'Jupiter → Orca', date: 'Jun 18' },
     { id: 'TRB-009', action: 'Rebalance NVDAx 25→30%', size: '$594,200', route: 'Jupiter → Raydium', date: 'Jun 05' },
     { id: 'TRB-008', action: 'Buy MSFTx', size: '$540,000', route: 'Jupiter → Meteora', date: 'May 27' },
     { id: 'TRB-007', action: 'Buy SOL', size: '$486,300', route: 'Jupiter → Raydium', date: 'May 14' },
     { id: 'TRB-006', action: 'Sell part of GOOGLx', size: '$212,700', route: 'Jupiter → Orca', date: 'Apr 30' },
     { id: 'TRB-005', action: 'Buy NVDAx', size: '$720,000', route: 'Jupiter → Raydium', date: 'Apr 12' },
-    { id: 'TRB-004', action: 'Buy BTC', size: '$905,000', route: 'Jupiter → Phoenix', date: 'Mar 28' },
+    { id: 'TRB-004', action: 'Buy WBTC', size: '$905,000', route: 'Jupiter → Phoenix', date: 'Mar 28' },
     { id: 'TRB-003', action: 'Rebalance AAPLx 12→15%', size: '$438,900', route: 'Jupiter → Meteora', date: 'Mar 09' },
     { id: 'TRB-002', action: 'Buy GOOGLx', size: '$512,400', route: 'Jupiter → Orca', date: 'Feb 20' },
     { id: 'TRB-001', action: 'Buy SOL', size: '$1,240,000', route: 'Jupiter → Raydium', date: 'Feb 02' },
-    { id: 'TRB-000', action: 'Seed vault · buy BTC', size: '$2,100,000', route: 'Jupiter → Raydium', date: 'Jan 15' },
+    { id: 'TRB-000', action: 'Seed vault · buy WBTC', size: '$2,100,000', route: 'Jupiter → Raydium', date: 'Jan 15' },
   ],
   selectedAnalyst: null,
   isAnalyst: false,

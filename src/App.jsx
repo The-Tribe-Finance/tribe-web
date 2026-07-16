@@ -31,12 +31,22 @@ import Delegation from './screens/Delegation';
 import Position from './screens/Position';
 import DelegatePrompt from './screens/DelegatePrompt';
 import { emptyVaultSnapshot, fetchVaultSnapshot } from './api/vault';
+import { fetchShareBalance } from './chain/vault';
 
 const PROPS = {
   vaultName: 'Tribe DAO',
   startDelegated: true,
   proposalThresholdPct: 1,
 };
+
+// Group a holding for the table's section headers. Tokenized equities are an
+// uppercase ticker followed by a lowercase "x" (AAPLx, METAx…); USDC/USDT are
+// cash; everything else is crypto.
+function categoryOf(sym) {
+  if (sym === 'USDC' || sym === 'USDT') return 'Cash';
+  if (/^[A-Z]{2,}x$/.test(sym)) return 'Stocks';
+  return 'Crypto';
+}
 
 export default function App() {
   const [state, setState] = useState(() => ({
@@ -45,6 +55,7 @@ export default function App() {
   }));
   const [vaultSnapshot, setVaultSnapshot] = useState(emptyVaultSnapshot);
   const [vaultHistory, setVaultHistory] = useState([]);
+  const [walletShares, setWalletShares] = useState(0);
   const toastTimer = useRef(null);
 
   const patch = useCallback((next) => {
@@ -83,7 +94,20 @@ export default function App() {
     patch({ walletConnected: wallet.connected });
   }, [wallet.connected, patch]);
 
-  const vals = useDerived(state, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault);
+  // The share token account is the sole source of truth for a member's
+  // position. Never reuse the old UI demo balance after the wallet changes.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshShares = async () => {
+      const amount = wallet.canDeposit ? await fetchShareBalance(wallet.address) : 0;
+      if (!cancelled) setWalletShares(amount);
+    };
+    refreshShares();
+    const timer = setInterval(refreshShares, 15_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [wallet.address, wallet.canDeposit]);
+
+  const vals = useDerived(state, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault);
 
   const screens = {
     home: Landing,
@@ -145,7 +169,7 @@ export default function App() {
  * Port of the design component's renderVals(): turns raw state into every
  * formatted value and handler the screens render.
  */
-function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault) {
+function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault) {
   return useMemo(() => {
     // On-chain balances are authoritative. A failed RPC intentionally displays zeros.
     const s = { ...rawState, treasury: vaultSnapshot.treasury, totalShares: vaultSnapshot.totalShares, holdings: vaultSnapshot.holdings };
@@ -160,8 +184,9 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
     const NAV = s.holdings.reduce((total, h) => total + h.qty * (vaultSnapshot.prices[h.sym] || 0), s.treasury);
     const activePower = NAV;
     const sharePrice = s.totalShares > 0 ? NAV / s.totalShares : 0;
-    const userValue = s.userShares * sharePrice;
-    const ownership = s.totalShares > 0 ? (s.userShares / s.totalShares) * 100 : 0;
+    const userShares = wallet?.canDeposit ? walletShares : 0;
+    const userValue = userShares * sharePrice;
+    const ownership = s.totalShares > 0 ? (userShares / s.totalShares) * 100 : 0;
 
     // ---- holdings, allocation ----
     const holdRows = s.holdings
@@ -186,17 +211,29 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
       swatch: r.tk.sw,
       badge: r.tk.badge,
       logo: r.tk.logo,
+      cat: categoryOf(r.sym),
       priceFmt: '$' + fmt(r.tk.price, 2),
+      chgUp: r.tk.chg >= 0,
       chgFmt: (r.tk.chg >= 0 ? '+' : '') + r.tk.chg.toFixed(1) + '%',
       chgColor: r.tk.chg >= 0 ? '#3e7d3a' : '#b3452f',
       qtyFmt: fmt(r.qty, r.qty > 0 && r.qty < 0.001 ? 8 : r.qty < 100 ? 3 : 0),
+      // Buy price = the asset's market price at purchase (no slippage/fees).
+      buyFmt: r.buyPrice == null ? '—' : '$' + fmt(r.buyPrice, 2),
+      // Avg cost = what the vault actually paid per unit (includes slippage/fees).
       avgFmt: r.avgCost == null ? '—' : '$' + fmt(r.avgCost, 2),
       valueFmt: usdPrecise(r.value),
       weightFmt: (NAV > 0 ? (r.value / NAV) * 100 : 0).toFixed(1) + '%',
+      pnl: r.pnl,
+      pnlUp: r.pnl != null && r.pnl >= 0,
       pnlFmt:
         r.pnl == null ? '—' : (r.pnl >= 0 ? '+' : '−') + usd(Math.abs(r.pnl)) + ' (' + (r.pnlPct >= 0 ? '+' : '') + r.pnlPct.toFixed(1) + '%)',
       pnlColor: r.pnl == null ? '#8a7d63' : r.pnl >= 0 ? '#3e7d3a' : '#b3452f',
     }));
+    // Order by category (Crypto → Stocks) then by value, so the table's section
+    // headers stay contiguous instead of a small crypto position slipping into
+    // the middle of the stocks block. USDC (Cash) is appended last below.
+    const catRank = { Crypto: 0, Stocks: 1, Cash: 2 };
+    tokenRows.sort((a, b) => (catRank[a.cat] - catRank[b.cat]) || (parseFloat(String(b.valueFmt).replace(/[^0-9.]/g, '')) - parseFloat(String(a.valueFmt).replace(/[^0-9.]/g, ''))));
     // Cash is also a real vault holding.  Keep it in the table whenever the
     // reserve is positive, while zero-balance tokens stay hidden.
     if (s.treasury > 0) {
@@ -206,30 +243,52 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
         swatch: TOKENS.USDC.sw,
         badge: TOKENS.USDC.badge,
         logo: TOKENS.USDC.logo,
+        cat: 'Cash',
         priceFmt: '$1.00',
+        chgUp: true,
         chgFmt: '0.0%',
         chgColor: '#8a7d63',
         qtyFmt: fmt(s.treasury, 6),
+        buyFmt: '$1.00',
         avgFmt: '$1.00',
         valueFmt: usdPrecise(s.treasury),
         weightFmt: (NAV > 0 ? (s.treasury / NAV) * 100 : 0).toFixed(1) + '%',
+        pnl: null,
+        pnlUp: false,
         pnlFmt: '—',
         pnlColor: '#8a7d63',
       });
     }
+    // Full per-token allocation — every held token plus the cash reserve. Used
+    // for redemption math, which must resolve each real token's price.
     const allocSrc = [
       ...holdRows.filter((r) => r.qty > 0).map((r) => ({ sym: r.sym, value: r.value, color: r.tk.sw })),
       ...(s.treasury > 0 ? [{ sym: 'USDC', value: s.treasury, color: TOKENS.USDC.sw }] : []),
     ];
+    // Display view for the chart/legend: roll positions below a small threshold
+    // into a single "Others" slice so it stays readable with many tokens. USDC is
+    // always its own slice (usually the largest).
+    const ALLOC_MIN_PCT = 2;
+    const ALLOC_MAX_SLICES = 7;
+    const tokenSlices = holdRows.filter((r) => r.qty > 0).map((r) => ({ sym: r.sym, value: r.value, color: r.tk.sw }));
+    const major = tokenSlices.filter((a) => (a.value / NAV) * 100 >= ALLOC_MIN_PCT).slice(0, ALLOC_MAX_SLICES);
+    const minor = tokenSlices.filter((a) => !major.includes(a));
+    const othersValue = minor.reduce((sum, a) => sum + a.value, 0);
+    const allocDisplay = [
+      ...major,
+      ...(othersValue > 0 ? [{ sym: 'Others', value: othersValue, color: '#b8ad93', count: minor.length }] : []),
+      ...(s.treasury > 0 ? [{ sym: 'USDC', value: s.treasury, color: TOKENS.USDC.sw }] : []),
+    ];
     const ah = s.allocHover;
     let cum = 0;
-    const allocation = allocSrc.map((a, i) => {
+    const allocation = allocDisplay.map((a, i) => {
       const w = (a.value / NAV) * 100;
       const mid = cum + w / 2;
       cum += w;
       const hovered = ah === i;
       return {
         sym: a.sym,
+        label: a.sym === 'Others' ? `Others (${a.count})` : a.sym,
         color: a.color,
         w,
         wFmt: w.toFixed(1) + '%',
@@ -240,14 +299,14 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
         rowBg: hovered ? '#faf6ec' : 'transparent',
       };
     });
-    const allocActive = ah != null && allocSrc[ah] ? allocation[ah] : null;
+    const allocActive = ah != null && allocDisplay[ah] ? allocation[ah] : null;
 
     const topHoldings = holdRows.slice(0, 5).map((r) => ({
       sym: r.sym,
       pct: ((r.value / NAV) * 100).toFixed(2) + '%',
     }));
     const totalPnl = holdRows.reduce((a, r) => a + (r.pnl ?? 0), 0);
-    const userPnl = totalPnl * (s.userShares / s.totalShares);
+    const userPnl = s.totalShares > 0 ? totalPnl * (userShares / s.totalShares) : 0;
 
     // ---- proposals ----
     const castVote = (id, side, power) => {
@@ -600,7 +659,7 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
       navFmt: usdPrecise(NAV),
       sharePriceFmt: sharePrice.toFixed(3) + ' USDC',
       userValueFmt: usdPrecise(userValue),
-      sharesFmt: fmt(s.userShares),
+      sharesFmt: fmt(userShares, 6),
       ownershipFmt: ownership.toFixed(2) + '%',
       usdcFmt: fmt(s.walletUsdc),
       treasuryFmt: usdPrecise(s.treasury),
@@ -708,5 +767,5 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
       walletConnected,
       walletAddress: wallet?.address ?? null,
     };
-  }, [rawState, patch, showToast, wallet, vaultSnapshot, vaultHistory, refreshVault]);
+  }, [rawState, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault]);
 }
