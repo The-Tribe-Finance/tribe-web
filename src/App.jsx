@@ -169,12 +169,13 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
         const fallbackToken = { name: h.sym, price: 0, chg: 0, sw: '#8a7d63', badge: '?' };
         const tk = { ...(TOKENS[h.sym] || fallbackToken), price: vaultSnapshot.prices[h.sym] || 0, chg: vaultSnapshot.changes[h.sym] || 0 };
         const value = h.qty * tk.price;
+        const hasCost = Number.isFinite(h.avgCost) && h.avgCost > 0;
         return {
           ...h,
           tk,
           value,
-          pnl: (tk.price - h.avgCost) * h.qty,
-          pnlPct: h.avgCost > 0 ? (tk.price / h.avgCost - 1) * 100 : 0,
+          pnl: hasCost ? (tk.price - h.avgCost) * h.qty : null,
+          pnlPct: hasCost ? (tk.price / h.avgCost - 1) * 100 : null,
         };
       })
       .sort((a, b) => b.value - a.value);
@@ -189,17 +190,12 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
       chgFmt: (r.tk.chg >= 0 ? '+' : '') + r.tk.chg.toFixed(1) + '%',
       chgColor: r.tk.chg >= 0 ? '#3e7d3a' : '#b3452f',
       qtyFmt: fmt(r.qty, r.qty > 0 && r.qty < 0.001 ? 8 : r.qty < 100 ? 3 : 0),
-      avgFmt: '$' + fmt(r.avgCost, 2),
+      avgFmt: r.avgCost == null ? '—' : '$' + fmt(r.avgCost, 2),
       valueFmt: usdPrecise(r.value),
       weightFmt: (NAV > 0 ? (r.value / NAV) * 100 : 0).toFixed(1) + '%',
       pnlFmt:
-        (r.pnl >= 0 ? '+' : '−') +
-        usd(Math.abs(r.pnl)) +
-        ' (' +
-        (r.pnlPct >= 0 ? '+' : '') +
-        r.pnlPct.toFixed(1) +
-        '%)',
-      pnlColor: r.pnl >= 0 ? '#3e7d3a' : '#b3452f',
+        r.pnl == null ? '—' : (r.pnl >= 0 ? '+' : '−') + usd(Math.abs(r.pnl)) + ' (' + (r.pnlPct >= 0 ? '+' : '') + r.pnlPct.toFixed(1) + '%)',
+      pnlColor: r.pnl == null ? '#8a7d63' : r.pnl >= 0 ? '#3e7d3a' : '#b3452f',
     }));
     // Cash is also a real vault holding.  Keep it in the table whenever the
     // reserve is positive, while zero-balance tokens stay hidden.
@@ -250,7 +246,7 @@ function useDerived(rawState, patch, showToast, wallet, vaultSnapshot, vaultHist
       sym: r.sym,
       pct: ((r.value / NAV) * 100).toFixed(2) + '%',
     }));
-    const totalPnl = holdRows.reduce((a, r) => a + r.pnl, 0);
+    const totalPnl = holdRows.reduce((a, r) => a + (r.pnl ?? 0), 0);
     const userPnl = totalPnl * (s.userShares / s.totalShares);
 
     // ---- proposals ----
