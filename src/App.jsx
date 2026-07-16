@@ -38,53 +38,13 @@ const PROPS = {
   proposalThresholdPct: 1,
 };
 
-const VAULT_HISTORY_KEY = 'tribe:vault-history:v1';
-const HISTORY_RETENTION_DAYS = 370;
-
-function readVaultHistory() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(VAULT_HISTORY_KEY) || '[]');
-    return Array.isArray(saved)
-      ? saved.filter((point) => Number.isFinite(point?.at) && Number.isFinite(point?.tvl))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDailyVaultSnapshot(history, point) {
-  const now = Date.now();
-  const intradayCutoff = now - 24 * 60 * 60 * 1000;
-  const cutoff = Date.now() - HISTORY_RETENTION_DAYS * 86400000;
-  const daily = new Map();
-  const intraday = [];
-  history.filter((entry) => entry.at >= cutoff).forEach((entry) => {
-    if (entry.at >= intradayCutoff) {
-      intraday.push(entry);
-      return;
-    }
-    const entryDay = new Date(entry.at);
-    entryDay.setHours(0, 0, 0, 0);
-    daily.set(entryDay.getTime(), entry);
-  });
-  const next = [...daily.values(), ...intraday, point]
-    .filter((entry, index, all) => index === all.findIndex((candidate) => candidate.at === entry.at))
-    .sort((a, b) => a.at - b.at);
-  try {
-    window.localStorage.setItem(VAULT_HISTORY_KEY, JSON.stringify(next));
-  } catch {
-    // A full/disabled local storage should never prevent the live portfolio rendering.
-  }
-  return next;
-}
-
 export default function App() {
   const [state, setState] = useState(() => ({
     ...INITIAL_STATE,
     delegatedTo: PROPS.startDelegated ? 'minh' : null,
   }));
   const [vaultSnapshot, setVaultSnapshot] = useState(emptyVaultSnapshot);
-  const [vaultHistory, setVaultHistory] = useState(readVaultHistory);
+  const [vaultHistory, setVaultHistory] = useState([]);
   const toastTimer = useRef(null);
 
   const patch = useCallback((next) => {
@@ -105,11 +65,7 @@ export default function App() {
   const refreshVault = useCallback(async () => {
     const snapshot = await fetchVaultSnapshot();
     setVaultSnapshot(snapshot);
-    const tvl = snapshot.holdings.reduce(
-      (total, holding) => total + holding.qty * (snapshot.prices[holding.sym] || 0),
-      snapshot.treasury,
-    );
-    setVaultHistory((history) => saveDailyVaultSnapshot(history, { at: Date.now(), tvl }));
+    setVaultHistory(snapshot.history);
   }, []);
   useEffect(() => {
     refreshVault();
