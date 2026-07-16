@@ -38,6 +38,12 @@ export const TOKENS = {
   BTC: { name: 'Bitcoin', price: 118450, chg: 1.8, sw: '#f7931a', badge: '₿', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E/logo.png' },
   ETH: { name: 'Ether', price: 3625, chg: 2.2, sw: '#627eea', badge: 'Ξ', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png' },
   SOL: { name: 'Solana', price: 214.3, chg: 3.1, sw: '#6a8caf', badge: 'S', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' },
+  JUP: { name: 'Jupiter', price: 0, chg: 0, sw: '#8d78f2', badge: 'J', logo: 'https://static.jup.ag/jup/icon.png' },
+  JitoSOL: { name: 'Jito Staked SOL', price: 0, chg: 0, sw: '#35a8b6', badge: 'J', logo: 'https://storage.googleapis.com/token-metadata/JitoSOL-256.png' },
+  mSOL: { name: 'Marinade Staked SOL', price: 0, chg: 0, sw: '#f08a5d', badge: 'm', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png' },
+  PYTH: { name: 'Pyth Network', price: 0, chg: 0, sw: '#7f5af0', badge: 'P', logo: 'https://pyth.network/token.svg' },
+  RENDER: { name: 'Render Token', price: 0, chg: 0, sw: '#d9524f', badge: 'R', logo: 'https://shdw-drive.genesysgo.net/5zseP54TGrcz9C8HdjZwJJsZ6f3VbP11p1abwKWGykZH/rndr.png' },
+  USDe: { name: 'Ethena USDe', price: 1, chg: 0, sw: '#4a9970', badge: 'U', logo: 'https://arweave.net/qeSnRm_FIyp_khPfmg8o1zQeGO4AczDaEKe8jEUOzL4' },
   USDC: { name: 'USD Coin', price: 1, chg: 0, sw: '#2775ca', badge: '$', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png' },
   USDT: { name: 'Tether USD', price: 1, chg: 0, sw: '#26a17b', badge: '₮', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png' },
 };
@@ -75,8 +81,8 @@ export const ACTION_PROTOS = {
 };
 
 export const XSTOCKS = ['AAPLx', 'NVDAx', 'MSFTx', 'GOOGLx', 'TSLAx', 'AMZNx', 'METAx', 'COINx', 'MSTRx', 'AMDx', 'PLTRx', 'SPYx', 'QQQx', 'NFLXx', 'CRCLx', 'HOODx', 'GLDx', 'JNJx', 'JPMx', 'WMTx', 'ORCLx', 'KOx', 'PGx', 'CSCOx', 'PEPx', 'MRKx', 'AVGOx', 'MCDx', 'CVXx', 'LLYx', 'ABTx', 'ABBVx', 'BACx'];
-export const CORE_CRYPTO = ['BTC', 'ETH', 'SOL'];
-export const STABLECOINS = ['USDC', 'USDT'];
+export const CORE_CRYPTO = ['BTC', 'ETH', 'SOL', 'JitoSOL', 'mSOL', 'JUP', 'RENDER', 'PYTH'];
+export const STABLECOINS = ['USDC', 'USDT', 'USDe'];
 export const INDEX_TOKENS = ['SPYx', 'QQQx', 'GLDx'];
 
 // The contract's approved xStock mints. Keeping the mint alongside UI metadata
@@ -87,6 +93,12 @@ export const TOKEN_MINTS = {
   // Wrapped Ether (Portal) is the liquid Solana representation routed by Jupiter.
   ETH: '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
   SOL: 'So11111111111111111111111111111111111111112',
+  JUP: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+  JitoSOL: 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn',
+  mSOL: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',
+  PYTH: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3',
+  RENDER: 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof',
+  USDe: 'DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
   AAPLx: 'XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp', NVDAx: 'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh',
