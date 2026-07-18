@@ -17,5 +17,10 @@
   "vaultWsolAta": "<vaultWsolAta pubkey>",
   "adapterPda": "<adapterPda pubkey>",
   "swapCapability": "<swapCapability pubkey>",
+  "tribeVoterWeightProgram": "<tribeVoterWeightProgram pubkey>",
+  "realm": "<realm pubkey>",
+  "registrar": "<registrar pubkey>",
+  "governingTokenMint": "<governingTokenMint pubkey, = shareMint>",
+  "governance": "<governance pubkey>",
   "wallet": "<your wallet pubkey>"
 }

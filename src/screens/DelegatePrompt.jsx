@@ -49,8 +49,8 @@ export default function DelegatePrompt({ delegateOptions, keepDirectVoting, clos
           <div>
             <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>Put your voting power to work</h3>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
-              Your deposit is in — you now hold voting power but haven't delegated it. Pick an analyst to vote on your
-              behalf, or keep voting yourself.
+              You've locked shares — you now hold voting power but haven't delegated it. Pick an analyst to vote on
+              your behalf, or keep voting yourself.
             </p>
           </div>
         </div>
@@ -92,13 +92,11 @@ export default function DelegatePrompt({ delegateOptions, keepDirectVoting, clos
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, fontWeight: 900, color: C.ink }}>{d.name}</span>
-                <span style={{ display: 'block', fontSize: 12, color: C.soft }}>
-                  {d.thesis} · {d.delegators} delegators
-                </span>
+                <span style={{ display: 'block', fontSize: 12, color: C.soft }}>{d.record}</span>
               </span>
               <span style={{ textAlign: 'right', flex: 'none' }}>
-                <span style={{ display: 'block', fontSize: 15, fontWeight: 900, color: C.up }}>{d.perf}</span>
-                <span style={{ display: 'block', fontSize: 10.5, color: C.soft, fontWeight: 700 }}>30D perf</span>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 900, color: C.up }}>{d.stakeFmt}</span>
+                <span style={{ display: 'block', fontSize: 10.5, color: C.soft, fontWeight: 700 }}>analyst stake</span>
               </span>
             </button>
           ))}
@@ -123,7 +121,8 @@ export default function DelegatePrompt({ delegateOptions, keepDirectVoting, clos
           I'll vote myself
         </button>
         <p style={{ margin: '12px 0 0', fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>
-          Delegation locks for {LOCK_DAYS} days to keep governance stable. You can switch or revoke afterwards.
+          For governance stability we suggest keeping a delegate for at least {LOCK_DAYS} days before switching — you're
+          always free to change or revoke it on-chain immediately.
         </p>
       </div>
     </div>

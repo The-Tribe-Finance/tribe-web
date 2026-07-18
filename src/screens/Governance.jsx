@@ -2,6 +2,7 @@ import { ACTION_PREVIEW_META, KIND_META, MARGIN_MIN_PCT, TOKEN_CATEGORIES, TOKEN
 import { Icon } from '../icons';
 import { C, Card, HoverButton, SectionHead, TokenIcon, TokenSelect } from '../ui';
 import { useIsTablet } from '../useMediaQuery';
+import LockPanel from './LockPanel';
 
 const INPUT = {
   width: '100%',
@@ -54,6 +55,8 @@ export default function Governance(v) {
           <strong>YES − NO ≥ {MARGIN_MIN_PCT}%</strong> of active voting power. Both must hold when voting closes.
         </span>
       </div>
+
+      <LockPanel {...v} />
 
       <CreateProposal {...v} />
 
@@ -452,9 +455,11 @@ function ProposalCard({ p }) {
       <p style={{ color: C.muted, fontSize: 13.5, margin: '10px 0 14px', maxWidth: 740, lineHeight: 1.6 }}>{p.summary}</p>
 
       <div style={{ display: 'flex', gap: 20, fontSize: 12.5, marginBottom: 16, color: C.soft }}>
-        <span>
-          Proposed by <strong style={{ color: C.ink }}>{p.analyst}</strong>
-        </span>
+        {p.analyst && (
+          <span>
+            Proposed by <strong style={{ color: C.ink }}>{p.analyst}</strong>
+          </span>
+        )}
         <span>{p.timing}</span>
       </div>
 

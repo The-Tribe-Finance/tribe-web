@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PublicKey } from '@solana/web3.js';
+import { getProposal } from '@solana/spl-governance';
 import {
-  ACCRUED,
   ACTIONS,
   ACTION_PROTOS,
-  ANALYST_NAMES,
   ANALYST_POOL_SHARE,
   FEE_PERF,
   INITIAL_STATE,
-  LOCK_DAYS,
   LOCK_MS,
   MARGIN_MIN_PCT,
   PROTOCOLS,
-  RAW_ANALYSTS,
   SLIPPAGE,
   TOKENS,
   YES_MIN_PCT,
   fmt,
   navOf,
-  parseTVL,
   usd,
   usdPrecise,
   usdCompact,
@@ -32,10 +29,25 @@ import Position from './screens/Position';
 import DelegatePrompt from './screens/DelegatePrompt';
 import { emptyVaultSnapshot, fetchVaultSnapshot } from './api/vault';
 import { fetchShareBalance } from './chain/vault';
+import {
+  getConnection,
+  fetchVoterWeightRecord,
+  fetchMaxVoterWeightRecord,
+  fetchLocker,
+  fetchAnalystRecord,
+  fetchRegistrar,
+} from './chain/governance';
+import { emptyProposals, emptyAnalysts, fetchProposals, fetchAnalystDirectory } from './api/governance';
+
+const ZERO_VOTER_WEIGHT = { voterWeight: 0, expiry: null, action: null, target: null };
+const ZERO_LOCKER = { amountLocked: 0, pendingUnlock: 0, unlockAvailableAt: 0, delegate: null };
+// spl-governance ProposalState names that only occur once a proposal's vote
+// has succeeded — mirrors tribe-api's own `PASSED_STATES` set exactly so the
+// FE and API agree on what "passed" means (see tribe-api/src/governance.ts).
+const PASSED_PROPOSAL_STATES = new Set(['Succeeded', 'Executing', 'Completed', 'ExecutingWithErrors']);
 
 const PROPS = {
   vaultName: 'Tribe DAO',
-  startDelegated: true,
   proposalThresholdPct: 1,
 };
 
@@ -49,13 +61,19 @@ function categoryOf(sym) {
 }
 
 export default function App() {
-  const [state, setState] = useState(() => ({
-    ...INITIAL_STATE,
-    delegatedTo: PROPS.startDelegated ? 'minh' : null,
-  }));
+  const [state, setState] = useState(() => ({ ...INITIAL_STATE }));
   const [vaultSnapshot, setVaultSnapshot] = useState(emptyVaultSnapshot);
   const [vaultHistory, setVaultHistory] = useState([]);
   const [walletShares, setWalletShares] = useState(0);
+  const [governanceSnapshot, setGovernanceSnapshot] = useState(() => ({
+    proposals: emptyProposals().proposals,
+    analysts: emptyAnalysts().analysts,
+  }));
+  const [voterWeight, setVoterWeight] = useState(ZERO_VOTER_WEIGHT);
+  const [maxVoterWeight, setMaxVoterWeight] = useState({ maxVoterWeight: 0 });
+  const [locker, setLocker] = useState(ZERO_LOCKER);
+  const [analystRecord, setAnalystRecord] = useState(null);
+  const [registrar, setRegistrar] = useState(null);
   const toastTimer = useRef(null);
 
   const patch = useCallback((next) => {
@@ -107,7 +125,74 @@ export default function App() {
     return () => { cancelled = true; clearInterval(timer); };
   }, [wallet.address, wallet.canDeposit]);
 
-  const vals = useDerived(state, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault);
+  // Proposal list + analyst directory: tribe-api's off-chain aggregation
+  // (mirrors `refreshVault` above). Zero/empty on any failure — never fabricate.
+  const refreshGovernance = useCallback(async () => {
+    const [proposalsRes, analystsRes] = await Promise.all([fetchProposals(), fetchAnalystDirectory()]);
+    setGovernanceSnapshot({ proposals: proposalsRes.proposals, analysts: analystsRes.analysts });
+  }, []);
+  useEffect(() => {
+    refreshGovernance();
+    const timer = setInterval(refreshGovernance, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshGovernance]);
+
+  // Per-member governance reads (voter weight, locker, own analyst record) —
+  // mirrors the `walletShares` effect above: zeroed the moment no Solana
+  // wallet is connected, never carried over from a prior address.
+  const refreshMemberReads = useCallback(async () => {
+    if (!wallet.canDeposit || !wallet.address) {
+      setVoterWeight(ZERO_VOTER_WEIGHT);
+      setLocker(ZERO_LOCKER);
+      setAnalystRecord(null);
+      return;
+    }
+    const [vwr, lockerData, ar] = await Promise.all([
+      fetchVoterWeightRecord(wallet.address),
+      fetchLocker(wallet.address),
+      fetchAnalystRecord(wallet.address),
+    ]);
+    setVoterWeight(vwr);
+    setLocker(lockerData);
+    setAnalystRecord(ar);
+  }, [wallet.address, wallet.canDeposit]);
+  useEffect(() => {
+    refreshMemberReads();
+    const timer = setInterval(refreshMemberReads, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshMemberReads]);
+
+  // Realm-wide governance reads: independent of which wallet (if any) is
+  // connected — the quorum denominator and the registrar's unlock-wait config.
+  const refreshRealmReads = useCallback(async () => {
+    const [mvwr, reg] = await Promise.all([fetchMaxVoterWeightRecord(), fetchRegistrar()]);
+    setMaxVoterWeight(mvwr);
+    setRegistrar(reg);
+  }, []);
+  useEffect(() => {
+    refreshRealmReads();
+    const timer = setInterval(refreshRealmReads, 15_000);
+    return () => clearInterval(timer);
+  }, [refreshRealmReads]);
+
+  const vals = useDerived(
+    state,
+    patch,
+    showToast,
+    wallet,
+    walletShares,
+    vaultSnapshot,
+    vaultHistory,
+    refreshVault,
+    governanceSnapshot,
+    voterWeight,
+    maxVoterWeight,
+    locker,
+    analystRecord,
+    registrar,
+    refreshGovernance,
+    refreshMemberReads,
+  );
 
   const screens = {
     home: Landing,
@@ -169,20 +254,57 @@ export default function App() {
  * Port of the design component's renderVals(): turns raw state into every
  * formatted value and handler the screens render.
  */
-function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault) {
+function useDerived(
+  rawState,
+  patch,
+  showToast,
+  wallet,
+  walletShares,
+  vaultSnapshot,
+  vaultHistory,
+  refreshVault,
+  governanceSnapshot,
+  voterWeight,
+  maxVoterWeight,
+  locker,
+  analystRecord,
+  registrar,
+  refreshGovernance,
+  refreshMemberReads,
+) {
   return useMemo(() => {
     // On-chain balances are authoritative. A failed RPC intentionally displays zeros.
     const s = { ...rawState, treasury: vaultSnapshot.treasury, totalShares: vaultSnapshot.totalShares, holdings: vaultSnapshot.holdings };
     const setTab = (tab) => () => patch({ tab });
+    const walletConnected = !!wallet?.connected;
+    const ownAddress = wallet?.address ?? null;
 
-    const isDelegated = !!s.delegatedTo;
-    const lockUntil = s.delegatedAt ? s.delegatedAt + LOCK_MS : 0;
-    const delegationLocked = isDelegated && lockUntil > Date.now();
-    const lockDaysLeft = delegationLocked ? Math.ceil((lockUntil - Date.now()) / 86400000) : 0;
+    // SHARE_DECIMALS = 6 for the share mint (== governingTokenMint), same as
+    // wallet.js. Every raw on-chain share/voter-weight amount (u64 base units)
+    // must go through this before being shown to a user — locked/pending
+    // amounts AND voter weight itself, since voter_weight is also share-
+    // denominated (state.rs). Hoisted here (used as early as `note` below,
+    // well before the Locker section) to avoid a temporal-dead-zone bug.
+    const SHARE_DECIMALS = 6;
+    const toShareUi = (raw) => raw / 10 ** SHARE_DECIMALS;
+
+    // Delegation: the Locker's `delegate` field is the real on-chain source of
+    // truth (a fresh Locker self-delegates by default — `create_locker`), not
+    // a mock `delegatedTo` key. `set_delegate` has NO on-chain time-gate
+    // (plan decision #12); `delegatedAt` below is a session-only cosmetic
+    // cool-down SUGGESTION, never a block on the real action.
+    const isDelegated = !!(locker.delegate && ownAddress && locker.delegate !== ownAddress);
     const days = (n) => n + ' day' + (n === 1 ? '' : 's');
+    const cooldownActive = !!(s.delegatedAt && Date.now() - s.delegatedAt < LOCK_MS);
+    const cooldownDaysLeft = cooldownActive ? Math.ceil((LOCK_MS - (Date.now() - s.delegatedAt)) / 86400000) : 0;
+    // Kept for Governance.jsx's existing opacity cue only — never gates the click.
+    const delegationLocked = cooldownActive;
+    const lockDaysLeft = cooldownDaysLeft;
 
     const NAV = s.holdings.reduce((total, h) => total + h.qty * (vaultSnapshot.prices[h.sym] || 0), s.treasury);
-    const activePower = NAV;
+    // Real active voting power = the realm's quorum denominator
+    // (MaxVoterWeightRecord), not vault NAV — Requirement 5.
+    const activePower = maxVoterWeight.maxVoterWeight;
     const sharePrice = s.totalShares > 0 ? NAV / s.totalShares : 0;
     const userShares = wallet?.canDeposit ? walletShares : 0;
     const userValue = userShares * sharePrice;
@@ -309,69 +431,78 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
     const userPnl = s.totalShares > 0 ? totalPnl * (userShares / s.totalShares) : 0;
 
     // ---- proposals ----
-    const castVote = (id, side, power) => {
-      patch((cur) => ({
-        proposals: cur.proposals.map((p) =>
-          p.id === id
-            ? {
-                ...p,
-                for: p.for + (side === 'for' ? power : 0),
-                against: p.against + (side === 'against' ? power : 0),
-              }
-            : p,
-        ),
-        votes: { ...cur.votes, [id]: side },
-      }));
-      showToast(
-        'Voted ' + (side === 'for' ? 'FOR' : 'AGAINST') + ' ' + id + ' with ' + usd(power) + ' of voting power.',
-      );
+    // Real spl-governance proposals from tribe-api (Phase 04/05) — a failed
+    // fetch yields an empty list (api/governance.js's own contract), never a
+    // fabricated one. `proposalOwnerTor` (needed by `castVote`) is not part of
+    // that API response, so it is resolved directly from spl-governance right
+    // before signing (see `handleVote` below) — a genuine read, not a mock.
+    const handleVote = (proposalPubkey, side) => async () => {
+      if (!wallet?.canDeposit || !wallet?.address) {
+        showToast('Connect a Solana wallet to vote.');
+        return;
+      }
+      let proposalOwnerTor;
+      try {
+        const connection = getConnection();
+        const proposalAccount = await getProposal(connection, new PublicKey(proposalPubkey));
+        proposalOwnerTor = proposalAccount.account.tokenOwnerRecord.toBase58();
+      } catch {
+        showToast('Could not read this proposal on-chain — try again.');
+        return;
+      }
+      const sig = await wallet.castVote({ proposal: proposalPubkey, proposalOwnerTor, vote: side === 'for' ? 'yes' : 'no' });
+      if (!sig) return;
+      patch((cur) => ({ votes: { ...cur.votes, [proposalPubkey]: side } }));
+      showToast('Voted ' + (side === 'for' ? 'FOR' : 'AGAINST') + ' ' + shortAddress(proposalPubkey) + '.');
+      await Promise.all([refreshGovernance(), refreshMemberReads()]);
     };
 
-    const proposals = s.proposals.map((p) => {
-      const total = p.for + p.against;
-      const forPct = total ? Math.round((p.for / total) * 100) : 0;
-      const isActive = p.status === 'active';
-      const yesPct = activePower > 0 ? (p.for / activePower) * 100 : 0;
-      const noPct = activePower > 0 ? (p.against / activePower) * 100 : 0;
+    const proposals = governanceSnapshot.proposals.map((p) => {
+      const forRaw = Number(p.options?.[0]?.voteWeight ?? 0);
+      const againstRaw = Number(p.denyVoteWeight ?? 0);
+      const total = forRaw + againstRaw;
+      const forPct = total ? Math.round((forRaw / total) * 100) : 0;
+      const isActive = p.state === 'Voting';
+      const isExecuted = PASSED_PROPOSAL_STATES.has(p.state);
+      const yesPct = activePower > 0 ? (forRaw / activePower) * 100 : 0;
+      const noPct = activePower > 0 ? (againstRaw / activePower) * 100 : 0;
       const marginPct = yesPct - noPct;
       const yesMet = yesPct >= YES_MIN_PCT;
       const marginMet = marginPct >= MARGIN_MIN_PCT;
       const passing = yesMet && marginMet;
-      const voted = s.votes[p.id];
+      const voted = s.votes[p.pubkey];
+      const meta = p.metadata;
 
       let note = null;
       if (isActive && voted) {
-        note = 'You voted ' + (voted === 'for' ? 'FOR' : 'AGAINST') + ' with ' + usd(userValue) + ' of voting power.';
+        note = 'You voted ' + (voted === 'for' ? 'FOR' : 'AGAINST') + ' with ' + fmt(toShareUi(voterWeight.voterWeight), 2) + ' voting power.';
       } else if (isActive && isDelegated) {
-        note = ANALYST_NAMES[s.delegatedTo] + ' votes on your behalf for this proposal.';
+        note = 'Your delegate (' + shortAddress(locker.delegate) + ') votes on your behalf for this proposal.';
       }
 
-      let timing;
-      if (isActive) {
-        timing =
-          'Voting ends in ' +
-          (p.endsInDays != null ? p.endsInDays : p.votingDays || 5) +
-          ' days · via ' +
-          (p.protocol || 'Jupiter');
-      } else if (p.status === 'executed') {
-        timing = 'Executed via ' + (p.route || 'Jupiter') + ' · ' + (p.date || '');
-      } else {
-        timing = 'Closed ' + (p.date || '');
-      }
+      const timing = isActive
+        ? 'Open for voting' + (p.votingAt ? ' · since ' + new Date(p.votingAt * 1000).toLocaleDateString() : '')
+        : p.state === 'Draft' || p.state === 'SigningOff'
+          ? 'Not yet open for voting'
+          : 'Voting closed · ' + p.state;
 
       return {
-        id: p.id,
-        kind: p.kind,
-        title: p.title,
-        summary: p.summary,
-        analyst: p.analyst,
-        status: p.status,
+        id: p.pubkey,
+        kind: meta?.kind || 'other',
+        title: p.name || (meta ? meta.kind + ' ' + meta.token : 'Untitled proposal'),
+        summary: meta?.thesis || p.descriptionLink || '',
+        // The proposals API does not expose a proposal → proposer-address join
+        // (only tribe-api's internal analyst-stats computation has it) — no
+        // "Proposed by" data source exists on the FE, so this stays undefined
+        // rather than a fabricated name (ProposalCard renders it conditionally).
+        analyst: undefined,
+        status: isActive ? 'active' : isExecuted ? 'executed' : 'rejected',
         timing,
-        statusLabel: isActive ? 'Active' : p.status === 'executed' ? 'Executed' : 'Rejected',
+        statusLabel: isActive ? 'Active' : isExecuted ? 'Executed' : 'Rejected',
         forPct,
         againstPct: total ? 100 - forPct : 0,
-        forFmt: usd(p.for),
-        againstFmt: usd(p.against),
+        forFmt: fmt(forRaw),
+        againstFmt: fmt(againstRaw),
         yesPctFmt: yesPct.toFixed(1) + '%',
         yesBarPct: Math.min(100, yesPct),
         yesMet,
@@ -383,14 +514,14 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
           ? passing
             ? 'On track to pass'
             : 'Not passing yet'
-          : p.status === 'executed'
+          : isExecuted
             ? 'Passed'
             : 'Did not pass',
-        passOk: isActive ? passing : p.status === 'executed',
-        showVoteButtons: isActive && !isDelegated && !voted,
+        passOk: isActive ? passing : isExecuted,
+        showVoteButtons: isActive && !isDelegated && !voted && walletConnected,
         note,
-        voteFor: () => castVote(p.id, 'for', userValue),
-        voteAgainst: () => castVote(p.id, 'against', userValue),
+        voteFor: handleVote(p.pubkey, 'for'),
+        voteAgainst: handleVote(p.pubkey, 'against'),
       };
     });
 
@@ -428,7 +559,10 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       : `${fmt(selectedTokenQty, selectedTokenQty === 0 ? 0 : 8)} ${s.npToken}`;
     const thesisOk = (s.npThesis || '').trim().length >= 20;
     const threshold = PROPS.proposalThresholdPct;
-    const meetsThreshold = ownership >= threshold;
+    // Real propose-threshold gate (Requirement 5): voter_weight / max_voter_weight,
+    // the program's own >=1% active-power check — NOT vault-share ownership %.
+    const realVotingPowerPct = maxVoterWeight.maxVoterWeight > 0 ? (voterWeight.voterWeight / maxVoterWeight.maxVoterWeight) * 100 : 0;
+    const meetsThreshold = realVotingPowerPct >= threshold;
     const submitDisabled = !(
       npAmt > 0 &&
       npTk.price > 0 &&
@@ -477,66 +611,81 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       createHint =
         'You need at least ' +
         threshold +
-        '% of voting power to open a proposal. You currently hold ' +
-        ownership.toFixed(2) +
-        '% — deposit more or ask a larger holder to sponsor this idea.';
+        '% of active voting power to open a proposal. You currently hold ' +
+        realVotingPowerPct.toFixed(2) +
+        '% — lock more shares or ask a larger holder to sponsor this idea.';
     }
 
-    const submitProposal = () => {
+    const submitProposal = async () => {
       if (submitDisabled) return;
-      const id = 'TRB-0' + s.nextId;
-      const isBuy = curAction === 'buy';
-      const proto = PROTOCOLS[curProto];
-      const title = (isBuy ? 'Buy ' : 'Sell ') + usd(npAmt) + ' of ' + s.npToken + ' (' + npTk.name + ')';
-      const np = {
-        id,
+      if (!wallet?.canDeposit || !wallet?.address) {
+        showToast('Connect a Solana wallet to submit a proposal.');
+        return;
+      }
+      const result = await wallet.createProposal({
         kind: ACTIONS[curAction].kind,
         token: s.npToken,
         amountUsd: npAmt,
-        title,
-        summary: s.npThesis.trim(),
-        analyst: 'You',
-        status: 'active',
-        for: 0,
-        against: 0,
-        protocol: proto.name,
-        votingDays: s.votingDays,
-        endsInDays: s.votingDays,
-      };
-      patch((cur) => ({
-        proposals: [np, ...cur.proposals],
-        nextId: cur.nextId + 1,
-        npAmount: '',
-        npThesis: '',
-        tab: 'governance',
-      }));
-      showToast('Proposal ' + id + ' created — open for voting.');
+        thesis: s.npThesis.trim(),
+      });
+      if (!result) return;
+      patch({ npAmount: '', npThesis: '', tab: 'governance' });
+      showToast('Proposal ' + shortAddress(result.proposal) + ' created — open for voting.');
+      await Promise.all([refreshGovernance(), refreshMemberReads()]);
     };
 
     // ---- analysts + rewards pool ----
-    const toggleDelegate = (key) => (e) => {
+    // Real delegation write: `setDelegate` (self = revoke, `lib.rs:82`). No
+    // on-chain time-gate exists (plan decision #12) — `delegatedAt` only drives
+    // a cosmetic cool-down SUGGESTION below, never blocks the actual call.
+    const revokeDelegation = async () => {
+      if (!wallet?.canDeposit || !wallet?.address) {
+        showToast('Connect a Solana wallet to change delegation.');
+        return;
+      }
+      const sig = await wallet.setDelegate(wallet.address);
+      if (!sig) return;
+      patch({ delegatedAt: Date.now() });
+      showToast('Delegation revoked — you vote directly again.');
+      await refreshMemberReads();
+    };
+
+    const chooseDelegate = (analystAddress) => async () => {
+      if (!wallet?.canDeposit || !wallet?.address) {
+        showToast('Connect a Solana wallet to delegate.');
+        return;
+      }
+      const sig = await wallet.setDelegate(analystAddress);
+      if (!sig) return;
+      patch({ delegatedAt: Date.now(), delegatePrompt: false });
+      showToast('Voting power delegated to ' + shortAddress(analystAddress) + '.');
+      await refreshMemberReads();
+    };
+
+    const toggleDelegate = (analystAddress) => (e) => {
       e?.stopPropagation?.();
-      if (s.delegatedTo === key) {
-        if (delegationLocked) {
-          showToast('Delegation is locked — ' + days(lockDaysLeft) + ' before you can revoke.');
-          return;
-        }
-        patch({ delegatedTo: null, delegatedAt: null });
-        showToast('Delegation revoked — you now vote directly.');
-        return;
+      if (locker.delegate === analystAddress) {
+        revokeDelegation();
+      } else {
+        chooseDelegate(analystAddress)();
       }
-      if (isDelegated && delegationLocked) {
-        showToast('Locked — you can switch analysts in ' + days(lockDaysLeft) + '.');
-        return;
-      }
-      patch({ delegatedTo: key, delegatedAt: Date.now() });
-      showToast('Voting power delegated to ' + ANALYST_NAMES[key] + ' — locked for ' + LOCK_DAYS + ' days.');
     };
 
     const feeMgmt = NAV * 0.005;
     const analystPool = (feeMgmt + FEE_PERF) * ANALYST_POOL_SHARE;
-    const poolMembers = RAW_ANALYSTS.map((a) => ({ key: a.key, name: a.name, tvlNum: parseTVL(a.tvl) }));
-    if (s.isAnalyst) poolMembers.push({ key: 'self', name: 'You', tvlNum: s.selfDelegatedTVL });
+    // Real analyst directory (Requirement 7 / decision #10): truncated address +
+    // derived stats (registeredAt/stake/proposalsCreated/proposalsPassed), no
+    // fabricated name/bio/perf. No on-chain source correlates "delegated TVL" to
+    // a specific analyst (Locker records a per-member delegate, but nothing
+    // aggregates locked shares by delegate) — rather than invent that number,
+    // every pool share/reward below is honestly zero until that aggregation
+    // exists, the same zero-on-failure convention as voting power above.
+    const analystDirectory = governanceSnapshot.analysts;
+    const isSelfAnalyst = !!analystRecord;
+    const poolMembers = analystDirectory.map((a) => ({ key: a.analyst, tvlNum: 0 }));
+    if (isSelfAnalyst && ownAddress && !poolMembers.some((m) => m.key === ownAddress)) {
+      poolMembers.push({ key: ownAddress, tvlNum: 0 });
+    }
     const totalDelegatedTVL = poolMembers.reduce((acc, m) => acc + m.tvlNum, 0) || 1;
     const shareOf = (key) => {
       const m = poolMembers.find((x) => x.key === key);
@@ -545,27 +694,38 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
     const rewardOf = (key) => (analystPool * shareOf(key)) / 100;
 
     const poolDist = poolMembers.map((m) => ({
-      name: m.name,
-      self: m.key === 'self',
+      name: m.key === ownAddress ? 'You' : shortAddress(m.key),
+      self: m.key === ownAddress,
       sharePct: shareOf(m.key).toFixed(1) + '%',
       barPct: shareOf(m.key),
       rewardsYrFmt: usd(Math.round(rewardOf(m.key))),
-      barColor: m.key === 'self' ? '#c2762e' : '#3e5c2f',
+      barColor: m.key === ownAddress ? '#c2762e' : '#3e5c2f',
     }));
 
-    const analysts = RAW_ANALYSTS.map((a) => {
-      const mine = s.delegatedTo === a.key;
-      const disabled = mine ? delegationLocked : isDelegated && delegationLocked;
+    const analysts = analystDirectory.map((a) => {
+      const mine = locker.delegate === a.analyst;
       return {
-        ...a,
+        key: a.analyst,
+        name: shortAddress(a.analyst),
+        initials: a.analyst.slice(0, 2).toUpperCase(),
+        handle: shortAddress(a.analyst, 6, 6),
+        thesis: '',
+        tvl: '—',
+        delegators: '—',
+        perf: '—',
+        sharpe: '—',
+        drawdown: '—',
+        record: a.proposalsPassed + ' of ' + a.proposalsCreated + ' proposals passed',
         isDelegated: mine,
-        disabled,
-        lockNote: disabled ? lockDaysLeft + 'd locked' : '',
-        rewardsYrFmt: usd(Math.round(rewardOf(a.key))),
-        accruedFmt: usd(ACCRUED[a.key] || 0),
-        poolSharePct: shareOf(a.key).toFixed(1) + '%',
-        openDetail: () => patch({ selectedAnalyst: a.key }),
-        toggleDelegate: toggleDelegate(a.key),
+        // Decision #12: `set_delegate` has no on-chain time-gate, so a real
+        // delegation change is never blocked here — only a soft note below.
+        disabled: false,
+        lockNote: mine && cooldownActive ? cooldownDaysLeft + 'd suggested wait' : '',
+        rewardsYrFmt: usd(Math.round(rewardOf(a.analyst))),
+        accruedFmt: usd(0),
+        poolSharePct: shareOf(a.analyst).toFixed(1) + '%',
+        openDetail: () => patch({ selectedAnalyst: a.analyst }),
+        toggleDelegate: toggleDelegate(a.analyst),
       };
     });
 
@@ -573,15 +733,17 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
     const ad = detail
       ? {
           ...detail,
-          history: detail.history.map((h) => ({ ...h, resultColor: h.up ? '#3e7d3a' : '#b3452f' })),
-          created: s.proposals.filter((p) => p.analyst === detail.name),
+          bio: '',
+          history: [], // no on-chain per-analyst trade-history feed exists yet
+          // The proposals API has no proposal → proposer-address join (see the
+          // `analyst: undefined` comment on `proposals` above) — empty, not fabricated.
+          created: [],
           close: () => patch({ selectedAnalyst: null }),
         }
       : null;
 
     // ---- deposit / redeem ----
     const depAmt = parseFloat(s.depositAmt) || 0;
-    const walletConnected = !!wallet?.connected;
     // The real USDC balance lives on-chain, not in the mock ledger, so the only
     // gate here is a positive amount plus a connected wallet.
     const depositDisabled = !(depAmt > 0) || !walletConnected;
@@ -602,7 +764,6 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
         treasury: cur.treasury + depAmt,
         walletUsdc: cur.walletUsdc - depAmt,
         depositAmt: '',
-        delegatePrompt: !cur.delegatedTo,
       }));
       showToast('Deposited ' + fmt(depAmt) + ' USDC — minted ' + fmt(mint, 2) + ' vault shares.');
     };
@@ -642,6 +803,71 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       }
     };
 
+    // ---- lock / unlock panel (decision #11) ----
+    // Locker/VoterWeightRecord amounts come back as raw base units (chain/governance.js
+    // has no opinion on share-mint decimals) — `toShareUi`/`SHARE_DECIMALS` hoisted
+    // near the top of this function (used earlier by `note` and `votingPowerFmt`).
+    const lockAmt = parseFloat(s.lockAmount) || 0;
+    const unlockAmt = parseFloat(s.unlockAmount) || 0;
+    const nowSec = Date.now() / 1000;
+    const unlockWaitSeconds = registrar?.unlockWaitSeconds ?? null;
+    const unlockWaitDaysLabel = unlockWaitSeconds ? Math.max(1, Math.round(unlockWaitSeconds / 86400)) + '-day' : 'on-chain';
+    const unlockWaitNote =
+      'Unlocking has a real ' + unlockWaitDaysLabel + ' on-chain wait once requested — this is enforced by the program, not a UI suggestion.';
+    const unlockCountdown =
+      locker.pendingUnlock > 0
+        ? locker.unlockAvailableAt > nowSec
+          ? 'available in ' + Math.max(1, Math.ceil((locker.unlockAvailableAt - nowSec) / 86400)) + 'd'
+          : 'available now'
+        : null;
+    const lockerStatusNote =
+      'Locked ' +
+      fmt(toShareUi(locker.amountLocked), 2) +
+      ' · Pending unlock ' +
+      fmt(toShareUi(locker.pendingUnlock), 2) +
+      (unlockCountdown ? ' (' + unlockCountdown + ')' : '');
+
+    const lockDisabled = !walletConnected || !(lockAmt > 0);
+    const requestUnlockDisabled = !walletConnected || !(unlockAmt > 0) || locker.amountLocked <= 0;
+    const cancelUnlockDisabled = !walletConnected || !(unlockAmt > 0) || locker.pendingUnlock <= 0;
+    const withdrawDisabled = !walletConnected || !(locker.pendingUnlock > 0) || locker.unlockAvailableAt > nowSec;
+
+    const lockSharesAction = async () => {
+      if (lockDisabled) return;
+      const wasFirstLock = locker.amountLocked <= 0;
+      const sig = await wallet.lockShares(lockAmt);
+      if (!sig) return;
+      patch((cur) => ({ lockAmount: '', delegatePrompt: wasFirstLock ? true : cur.delegatePrompt }));
+      showToast('Locked ' + lockAmt + ' shares for voting power.');
+      await refreshMemberReads();
+    };
+
+    const requestUnlockAction = async () => {
+      if (requestUnlockDisabled) return;
+      const sig = await wallet.requestUnlock(unlockAmt);
+      if (!sig) return;
+      patch({ unlockAmount: '' });
+      showToast('Unlock requested for ' + unlockAmt + ' shares.');
+      await refreshMemberReads();
+    };
+
+    const cancelUnlockAction = async () => {
+      if (cancelUnlockDisabled) return;
+      const sig = await wallet.cancelUnlock(unlockAmt);
+      if (!sig) return;
+      patch({ unlockAmount: '' });
+      showToast('Cancelled unlock for ' + unlockAmt + ' shares.');
+      await refreshMemberReads();
+    };
+
+    const withdrawUnlockedAction = async () => {
+      if (withdrawDisabled) return;
+      const sig = await wallet.withdrawUnlocked();
+      if (!sig) return;
+      showToast('Withdrew unlocked shares.');
+      await refreshMemberReads();
+    };
+
     return {
       state: s,
       patch,
@@ -665,7 +891,9 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       treasuryFmt: usdPrecise(s.treasury),
       treasuryPctFmt: ((s.treasury / NAV) * 100).toFixed(1) + '%',
       userPnlFmt: (userPnl >= 0 ? '+' : '−') + usd(Math.abs(userPnl)),
-      votingPowerFmt: usd(userValue),
+      // Real voting power (Requirement 4): VoterWeightRecord.voter_weight is a
+      // LOCKED-share count, not share×price — zero until shares are locked.
+      votingPowerFmt: fmt(toShareUi(voterWeight.voterWeight), 2),
       topHoldings,
       tokenRows,
       allocation,
@@ -676,16 +904,32 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       // governance
       proposals,
       isDelegated,
-      delegatedToName: isDelegated ? ANALYST_NAMES[s.delegatedTo] : '',
+      delegatedToName: isDelegated ? shortAddress(locker.delegate) : '',
       delegationLocked,
       lockDaysLeft,
       govStatusNote: isDelegated
-        ? 'Delegated to ' + ANALYST_NAMES[s.delegatedTo]
+        ? 'Delegated to ' + shortAddress(locker.delegate)
         : 'You vote on every proposal',
-      lockBannerNote: delegationLocked
-        ? 'Locked for ' + days(lockDaysLeft) + ' before you can revoke or switch.'
-        : 'You can revoke at any time.',
-      revokeDelegation: () => toggleDelegate(s.delegatedTo)(),
+      // Decision #12: reworded — `set_delegate` has no on-chain time-gate, so
+      // this is a stability suggestion, never a claim of enforcement.
+      lockBannerNote: cooldownActive
+        ? 'You switched delegates recently — for governance stability we suggest waiting ' +
+          days(cooldownDaysLeft) +
+          ', though you can change it on-chain anytime.'
+        : 'You can switch or revoke at any time — changes take effect immediately on-chain.',
+      revokeDelegation,
+
+      // lock / unlock voting power (decision #11)
+      lockerStatusNote,
+      unlockWaitNote,
+      lockDisabled,
+      requestUnlockDisabled,
+      cancelUnlockDisabled,
+      withdrawDisabled,
+      lockSharesAction,
+      requestUnlockAction,
+      cancelUnlockAction,
+      withdrawUnlockedAction,
 
       // create proposal
       actionTabs,
@@ -703,7 +947,7 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       thesisOk,
       meetsThreshold,
       thresholdFmt: threshold + '%',
-      ownershipPctFmt: ownership.toFixed(2) + '%',
+      ownershipPctFmt: realVotingPowerPct.toFixed(2) + '%',
       previewUnits: npAmt ? fmt(npAmt / npTk.price, 2) : '0',
       previewPrice: usd(npTk.price),
       previewRoute: PROTOCOLS[curProto].name + ' → best DEX',
@@ -719,22 +963,28 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       poolPerfFmt: usd(Math.round(FEE_PERF)),
       poolShareNote: ANALYST_POOL_SHARE * 100 + '% of protocol fees',
       selfPanel: {
-        isAnalyst: s.isAnalyst,
-        rewardsYrFmt: usd(Math.round(rewardOf('self'))),
-        accruedFmt: usd(s.selfAccrued),
-        delegatorsFmt: fmt(s.selfDelegators),
-        delegatedFmt: usdCompact(s.selfDelegatedTVL),
-        sharePct: (s.isAnalyst ? shareOf('self') : 0).toFixed(1) + '%',
+        isAnalyst: isSelfAnalyst,
+        rewardsYrFmt: usd(Math.round(rewardOf(ownAddress))),
+        accruedFmt: usd(0),
+        delegatorsFmt: '—',
+        delegatedFmt: usdCompact(0),
+        sharePct: (isSelfAnalyst ? shareOf(ownAddress) : 0).toFixed(1) + '%',
       },
-      becomeAnalyst: () => {
-        patch({ isAnalyst: true, selfDelegatedTVL: 185000, selfDelegators: 3, selfAccrued: 0 });
-        showToast('You are now a Tribe analyst — your public profile is live and open to delegations.');
+      becomeAnalyst: async () => {
+        if (!wallet?.canDeposit || !wallet?.address) {
+          showToast('Connect a Solana wallet to register as an analyst.');
+          return;
+        }
+        const sig = await wallet.registerAnalyst();
+        if (!sig) return;
+        showToast('You are now a registered Tribe analyst.');
+        await Promise.all([refreshMemberReads(), refreshGovernance()]);
       },
-      dpStatusLabel: isDelegated ? ANALYST_NAMES[s.delegatedTo] : 'Direct voting',
+      dpStatusLabel: isDelegated ? shortAddress(locker.delegate) : 'Direct voting',
       dpStatusNote: isDelegated
-        ? delegationLocked
-          ? '🔒 Locked · ' + days(lockDaysLeft) + ' left'
-          : 'Unlocked · you can switch anytime'
+        ? cooldownActive
+          ? 'Recently switched · consider waiting ' + days(cooldownDaysLeft) + ' · you can still change anytime'
+          : 'You can switch or revoke anytime'
         : 'You vote on every proposal yourself',
 
       // deposit / redeem
@@ -749,17 +999,19 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       redeemBreakdown,
       confirmRedeem,
 
-      // post-deposit prompt
-      delegateOptions: RAW_ANALYSTS.map((a) => ({
-        ...a,
-        choose: () => {
-          patch({ delegatedTo: a.key, delegatedAt: Date.now(), delegatePrompt: false });
-          showToast('Delegated your voting power to ' + a.name + '.');
-        },
+      // post-lock delegate prompt (shown after a member's first confirmed lock,
+      // decision #10/#11: truncated address + derived stats, no fabricated name)
+      delegateOptions: analystDirectory.map((a) => ({
+        key: a.analyst,
+        initials: a.analyst.slice(0, 2).toUpperCase(),
+        name: shortAddress(a.analyst),
+        record: a.proposalsPassed + ' of ' + a.proposalsCreated + ' proposals passed',
+        stakeFmt: fmt(a.stake / 1e9, 3) + ' SOL staked',
+        choose: chooseDelegate(a.analyst),
       })),
       keepDirectVoting: () => {
-        patch({ delegatedTo: null, delegatePrompt: false });
-        showToast('You’ll vote on every proposal yourself. Delegate anytime from Analysts.');
+        patch({ delegatePrompt: false });
+        showToast('You’ll vote on every proposal yourself. Delegate anytime from the Delegation tab.');
       },
       closeDelegatePrompt: () => patch({ delegatePrompt: false }),
 
@@ -767,5 +1019,22 @@ function useDerived(rawState, patch, showToast, wallet, walletShares, vaultSnaps
       walletConnected,
       walletAddress: wallet?.address ?? null,
     };
-  }, [rawState, patch, showToast, wallet, walletShares, vaultSnapshot, vaultHistory, refreshVault]);
+  }, [
+    rawState,
+    patch,
+    showToast,
+    wallet,
+    walletShares,
+    vaultSnapshot,
+    vaultHistory,
+    refreshVault,
+    governanceSnapshot,
+    voterWeight,
+    maxVoterWeight,
+    locker,
+    analystRecord,
+    registrar,
+    refreshGovernance,
+    refreshMemberReads,
+  ]);
 }

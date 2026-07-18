@@ -1,0 +1,2055 @@
+{
+  "address": "kUzyQG4f3wa7MHcacWPUedkwHiANEZTDjCJt4ocA7GH",
+  "metadata": {
+    "name": "tribe_voter_weight",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "The Tribe — voter weight plugin: locked shares, delegation, analyst registry"
+  },
+  "docs": [
+    "# The Tribe — Voter Weight Plugin",
+    "",
+    "Supplies SPL Governance's `VoterWeightRecord` / `MaxVoterWeightRecord` addin interface",
+    "with Tribe's voting model: locked + delegated shares carry power, passive shares don't,",
+    "and only registered analysts holding >=1% of active power may create proposals.",
+    "",
+    "spl-governance never CPIs an addin — it deserializes and checks whatever",
+    "VoterWeightRecord/MaxVoterWeightRecord account the caller supplies. So every",
+    "instruction this program exposes is **user-callable**, meant to run in the same",
+    "transaction as the spl-governance instruction (CastVote, CreateProposal, ...) it backs.",
+    "",
+    "Three invariants that must NEVER be broken (invariant 1 enforced starting phase 03,",
+    "once VoterWeightRecord/MaxVoterWeightRecord exist; 2 and 3 from phase 03/04):",
+    "",
+    "1. Σ Locker.amount_locked == Σ VoterWeightRecord.voter_weight == MaxVoterWeightRecord.",
+    "max_voter_weight, at all times. A drift here means governance is voting on a",
+    "number that doesn't match anyone's actual locked shares.",
+    "2. voter_weight_expiry is never open-ended. A record must expire same-slot, or a",
+    "member could vote (or propose) using power computed before they unlocked.",
+    "3. The analyst/proposal gate fails closed. Any missing, unregistered, or",
+    "below-threshold case yields zero CreateProposal weight — never default-allow."
+  ],
+  "instructions": [
+    {
+      "name": "cancel_unlock",
+      "docs": [
+        "Cancels part or all of a still-pending unlock: no token movement, no new timer,",
+        "voting power restored immediately (phase 03)."
+      ],
+      "discriminator": [
+        116,
+        58,
+        36,
+        132,
+        24,
+        104,
+        170,
+        228
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "locker"
+          ]
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "locker.registrar",
+                "account": "Locker"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registrar",
+          "docs": [
+            "Must match `locker.registrar` explicitly — unlike lock_shares/request_unlock,",
+            "Locker's own seeds here derive from `locker.registrar` rather than",
+            "`registrar.key()`, so nothing else ties this account to the locker. Without this",
+            "check a caller could supply an unrelated registrar and credit/debit the wrong",
+            "realm's VoterWeightRecord/MaxVoterWeightRecord."
+          ]
+        },
+        {
+          "name": "delegate_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "locker.delegate",
+                "account": "Locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_locker",
+      "docs": [
+        "One per (registrar, member). Self-delegates by default."
+      ],
+      "discriminator": [
+        167,
+        90,
+        137,
+        154,
+        75,
+        47,
+        17,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Escrow holding this member's locked shares. Authority is the Locker PDA itself —",
+            "it can sign CPIs via its own seeds, so no separate authority PDA is needed."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114,
+                  95,
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_registrar",
+      "docs": [
+        "One per realm. Fixes `unlock_wait_seconds`/`analyst_stake_lamports` from the",
+        "program's own audited constants — not from `realm`, which is only an identity."
+      ],
+      "discriminator": [
+        132,
+        235,
+        36,
+        49,
+        139,
+        66,
+        202,
+        69
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "governing_token_mint"
+        },
+        {
+          "name": "registrar",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  97,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "realm"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_voter_weight_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "realm"
+              },
+              {
+                "kind": "account",
+                "path": "governing_token_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "realm",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "create_voter_weight_record",
+      "docs": [
+        "Every member who can RECEIVE delegation (including self-delegation) needs one of",
+        "these before shares can be locked to them."
+      ],
+      "discriminator": [
+        184,
+        249,
+        133,
+        178,
+        88,
+        152,
+        250,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "voter_weight_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deregister_analyst",
+      "docs": [
+        "Refunds the stake and closes the record, unless the analyst is the proposer of a",
+        "still-live proposal (see this instruction's doc comment in analyst.rs for exactly",
+        "what the live-proposal guard does and doesn't prove)."
+      ],
+      "discriminator": [
+        95,
+        236,
+        193,
+        41,
+        65,
+        65,
+        133,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "analyst",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "analyst_record"
+          ]
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "analyst_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  110,
+                  97,
+                  108,
+                  121,
+                  115,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "analyst"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "lock_shares",
+      "docs": [
+        "Moves `amount` shares from the owner into escrow custody. Voting power (phase 03)",
+        "accrues to `locker.delegate` immediately."
+      ],
+      "discriminator": [
+        22,
+        197,
+        217,
+        24,
+        91,
+        91,
+        177,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "locker"
+          ]
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114,
+                  95,
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "delegate_vwr",
+          "docs": [
+            "The locker's CURRENT delegate's weight record — defaults to the owner's own",
+            "record (self-delegation) unless `set_delegate` has changed it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "locker.delegate",
+                "account": "Locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "register_analyst",
+      "docs": [
+        "Open to anyone, backed by a refundable stake (README: requiring approval would",
+        "deadlock at launch). The stake is the only spam deterrent — the real gate on who",
+        "may propose is the >=1% active-power check in `update_voter_weight_record`."
+      ],
+      "discriminator": [
+        194,
+        2,
+        101,
+        255,
+        26,
+        16,
+        209,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "analyst",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "analyst_record",
+          "docs": [
+            "Stake lives directly on this account's own lamport balance (on top of what `init`",
+            "reserves for rent) — no separate escrow PDA. `deregister_analyst`'s `close =",
+            "analyst` refunds the whole balance (rent + stake) in one step, nothing to",
+            "reconcile between two accounts."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  110,
+                  97,
+                  108,
+                  121,
+                  115,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "analyst"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "request_unlock",
+      "docs": [
+        "Starts the two-stage unlock: voting power is removed immediately (phase 03), the",
+        "shares themselves become withdrawable only after `unlock_wait_seconds`."
+      ],
+      "discriminator": [
+        114,
+        219,
+        84,
+        115,
+        190,
+        220,
+        130,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "locker"
+          ]
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "delegate_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "locker.delegate",
+                "account": "Locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_delegate",
+      "docs": [
+        "Moves a locker's realized weight from its current delegate to a new one. The new",
+        "delegate must already have a VoterWeightRecord."
+      ],
+      "discriminator": [
+        242,
+        30,
+        46,
+        76,
+        108,
+        235,
+        128,
+        181
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "locker"
+          ]
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "old_delegate_vwr",
+          "docs": [
+            "The Locker's CURRENT delegate's record, read before this instruction mutates",
+            "`locker.delegate` — Anchor validates this seed against the on-chain `locker` state",
+            "as it exists at the start of the instruction, which is still the old delegate."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "locker.delegate",
+                "account": "Locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_delegate_vwr",
+          "docs": [
+            "The new delegate's record. Must already exist — Anchor's own account",
+            "deserialization enforces this (an uninitialized account cannot load as",
+            "`Account<'info, VoterWeightRecord>`), so no separate \"record missing\" error is",
+            "needed here."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "arg",
+                "path": "new_delegate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_vwr",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_delegate",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_max_voter_weight_record",
+      "docs": [
+        "Permissionless — refreshes the realm's MaxVoterWeightRecord expiry before a quorum",
+        "check. `max_voter_weight` itself is already a live running total."
+      ],
+      "discriminator": [
+        103,
+        175,
+        201,
+        251,
+        2,
+        9,
+        251,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "max_voter_weight_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_voter_weight_record",
+      "docs": [
+        "Refreshes a record's expiry/action/target for a specific governance action, in the",
+        "same transaction as the spl-governance instruction it backs. Does not recompute",
+        "`voter_weight` — that's a live running total already."
+      ],
+      "discriminator": [
+        45,
+        185,
+        3,
+        36,
+        109,
+        190,
+        115,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "voter_weight_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "max_vwr",
+          "docs": [
+            "Always required (it's a cheap, always-existing realm singleton) even though it's",
+            "only read for the CreateProposal branch — simpler than making it conditionally",
+            "optional for one specific action."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  120,
+                  95,
+                  118,
+                  111,
+                  116,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  105,
+                  103,
+                  104,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar.realm",
+                "account": "Registrar"
+              },
+              {
+                "kind": "account",
+                "path": "registrar.governing_token_mint",
+                "account": "Registrar"
+              }
+            ]
+          }
+        },
+        {
+          "name": "analyst_record",
+          "docs": [
+            "Only present for analysts. `None` for everyone else — checked only when",
+            "`weight_action == CreateProposal`; irrelevant (and fine to omit) for CastVote and",
+            "every other action."
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  110,
+                  97,
+                  108,
+                  121,
+                  115,
+                  116,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "weight_action",
+          "type": {
+            "defined": {
+              "name": "VoterWeightAction"
+            }
+          }
+        },
+        {
+          "name": "weight_action_target",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw_unlocked",
+      "docs": [
+        "Releases the pending amount to the owner once the wait has elapsed."
+      ],
+      "discriminator": [
+        213,
+        161,
+        76,
+        199,
+        38,
+        28,
+        209,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "locker"
+          ]
+        },
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "locker",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  101,
+                  114,
+                  95,
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "locker"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AnalystRecord",
+      "discriminator": [
+        226,
+        215,
+        157,
+        23,
+        83,
+        149,
+        178,
+        59
+      ]
+    },
+    {
+      "name": "Locker",
+      "discriminator": [
+        74,
+        246,
+        6,
+        113,
+        249,
+        228,
+        75,
+        169
+      ]
+    },
+    {
+      "name": "MaxVoterWeightRecord",
+      "discriminator": [
+        157,
+        95,
+        242,
+        151,
+        16,
+        98,
+        26,
+        118
+      ]
+    },
+    {
+      "name": "Registrar",
+      "discriminator": [
+        193,
+        202,
+        205,
+        51,
+        78,
+        168,
+        150,
+        128
+      ]
+    },
+    {
+      "name": "VoterWeightRecord",
+      "discriminator": [
+        46,
+        249,
+        155,
+        75,
+        153,
+        248,
+        116,
+        9
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "AmountZero",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6001,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6002,
+      "name": "InsufficientLocked",
+      "msg": "Locked amount is insufficient for this request"
+    },
+    {
+      "code": 6003,
+      "name": "UnlockNotElapsed",
+      "msg": "Unlock wait period has not elapsed yet"
+    },
+    {
+      "code": 6004,
+      "name": "NothingToWithdraw",
+      "msg": "No pending unlock amount to withdraw"
+    },
+    {
+      "code": 6005,
+      "name": "InsufficientPending",
+      "msg": "Pending unlock amount is insufficient to cancel this much"
+    },
+    {
+      "code": 6006,
+      "name": "MintMismatch",
+      "msg": "Mint does not match the registrar's governing token mint"
+    },
+    {
+      "code": 6007,
+      "name": "TokenAccountOwnerMismatch",
+      "msg": "Token account owner does not match the expected signer"
+    },
+    {
+      "code": 6008,
+      "name": "WeightUnderflow",
+      "msg": "Weight underflow: delegate's voter weight or the realm's max voter weight would go negative"
+    },
+    {
+      "code": 6009,
+      "name": "RealmMismatch",
+      "msg": "Registrar does not match this locker's registrar"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyDelegated",
+      "msg": "New delegate is already the current delegate"
+    },
+    {
+      "code": 6011,
+      "name": "NotRegisteredAnalyst",
+      "msg": "Owner is not a registered analyst"
+    },
+    {
+      "code": 6012,
+      "name": "BelowProposalThreshold",
+      "msg": "Analyst holds less than 1% of active voting power"
+    },
+    {
+      "code": 6013,
+      "name": "NotSplGovernanceAccount",
+      "msg": "A passed proposal/token-owner-record account is not owned by spl-governance"
+    },
+    {
+      "code": 6014,
+      "name": "DeregisterBlocked",
+      "msg": "Cannot deregister while proposer of a live proposal"
+    }
+  ],
+  "types": [
+    {
+      "name": "AnalystRecord",
+      "docs": [
+        "One per registered analyst. Independent from Locker — a member may be an analyst",
+        "without locking any shares, and may lock shares without ever registering. Registration",
+        "is deliberately open (README: requiring approval would deadlock at launch — approval",
+        "needs votes, votes need shares, shares need someone to have deposited first). The",
+        "refundable stake is the only spam deterrent; the 1% active-power threshold (checked at",
+        "CreateProposal time, not here) is what actually gates who can propose."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "analyst",
+            "type": "pubkey"
+          },
+          {
+            "name": "stake_lamports",
+            "docs": [
+              "Exact lamports posted at registration — refunded exactly this amount on",
+              "deregistration, tracked separately from the account's rent so the two can never be",
+              "confused."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "registered_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Locker",
+      "docs": [
+        "One per (registrar, member). Tracks a member's locked shares, any shares mid-unlock,",
+        "and who currently gets voting credit for them.",
+        "",
+        "Invariant that must hold after every instruction touching this account:",
+        "`amount_locked + pending_unlock_amount == escrow.amount`. The escrow is the only place",
+        "shares physically sit once locked — this account just books who they belong to and",
+        "whether they're still voting or on their way out."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "The member who owns these shares. Only this key may lock/unlock/cancel/withdraw."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "delegate",
+            "docs": [
+              "Who currently receives voting credit for `amount_locked`. Defaults to `owner`",
+              "(self-delegation) at `create_locker` — shares are never voteless by default, but",
+              "they ARE powerless until locked, per the README's voting model."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_locked",
+            "docs": [
+              "Shares currently locked and counted in `delegate`'s voting weight."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pending_unlock_amount",
+            "docs": [
+              "Shares that had `request_unlock` called on them: voting power already removed,",
+              "principal not yet released. Zero means nothing is mid-unlock."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "unlock_available_at",
+            "docs": [
+              "Unix timestamp `withdraw_unlocked` becomes callable at. Meaningless (and ignored)",
+              "while `pending_unlock_amount == 0`.",
+              "",
+              "NOTE: a second `request_unlock` while a pending amount already exists resets this",
+              "to `now + unlock_wait_seconds` for the COMBINED pending balance — there is no",
+              "per-request queue, by design (one scalar timer, matching the account's fixed",
+              "size). A member who wants independent timers must fully withdraw before",
+              "requesting again."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "escrow_bump",
+            "docs": [
+              "Bump of this locker's escrow token account (seeds derive from this account's own",
+              "key, so the escrow's address only exists once this account does)."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MaxVoterWeightRecord",
+      "docs": [
+        "SPL Governance's max-voter-weight addin interface account — one per realm, the running",
+        "total of every VoterWeightRecord's weight in this realm. Required because Tribe's",
+        "quorum is a PERCENTAGE of active voting power (30%, per the passing rule), so",
+        "spl-governance needs a denominator. Same hand-defined-struct rationale as",
+        "VoterWeightRecord above; same \"do not add an explicit discriminator field\" warning."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "realm",
+            "type": "pubkey"
+          },
+          {
+            "name": "governing_token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_voter_weight",
+            "docs": [
+              "Running total: `Σ VoterWeightRecord.voter_weight == max_voter_weight ==",
+              "Σ Locker.amount_locked` must hold at all times. Mutated by the same",
+              "credit_delegate/debit_delegate calls as the delegate's VoterWeightRecord, never",
+              "independently."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_voter_weight_expiry",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Registrar",
+      "docs": [
+        "One per realm. Defines the governing token (Tribe's share mint) and the fixed",
+        "unlock-wait / analyst-stake parameters this realm's members are locked into.",
+        "",
+        "`unlock_wait_seconds`/`analyst_stake_lamports` are copied here from the audited",
+        "program constants (`UNLOCK_WAIT_SECONDS`/`ANALYST_STAKE_LAMPORTS`) at creation time —",
+        "NOT caller-supplied — so every Locker/AnalystRecord in this realm can read its config",
+        "locally without a second account, while the actual security parameters stay fixed by",
+        "the program, never settable by whoever calls `create_registrar`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "realm",
+            "docs": [
+              "The SPL Governance realm this registrar backs. Not independently verified against",
+              "spl-governance in this phase — wiring that check is phase 05's integration-test",
+              "concern, once a real realm exists to check against."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "governing_token_mint",
+            "docs": [
+              "Tribe's share mint. Must equal the vault's `share_mint` (checked at every lock)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "realm_authority",
+            "docs": [
+              "Whoever created this registrar. Recorded for future authority-gated operations;",
+              "today only `create_registrar`'s one-time init reads it."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "unlock_wait_seconds",
+            "docs": [
+              "Copied from `UNLOCK_WAIT_SECONDS` at creation. See that constant for rationale."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "analyst_stake_lamports",
+            "docs": [
+              "Copied from `ANALYST_STAKE_LAMPORTS` at creation. See that constant for rationale."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoterWeightAction",
+      "docs": [
+        "The governance action a VoterWeightRecord's weight was computed for. Mirrors",
+        "spl-governance-addin-api's `VoterWeightAction` enum EXACTLY — variant order is part of",
+        "the wire format (Borsh encodes enum variants by index, not name), so this must never be",
+        "reordered or have a variant inserted anywhere but the end."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "CastVote"
+          },
+          {
+            "name": "CommentProposal"
+          },
+          {
+            "name": "CreateGovernance"
+          },
+          {
+            "name": "CreateProposal"
+          },
+          {
+            "name": "SignOffProposal"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoterWeightRecord",
+      "docs": [
+        "SPL Governance's voter-weight addin interface account — hand-defined locally rather",
+        "than depending on `spl-governance-addin-api` (see phase 01/03 notes: that crate cannot",
+        "compile for the Solana BPF/SBF target at all). Anchor's own `#[account]` macro",
+        "auto-derives and strips an 8-byte discriminator = sha256(\"account:VoterWeightRecord\")",
+        "[..8] on every serialize/deserialize — independently verified (computed in Python) to",
+        "equal spl-governance's hardcoded expected bytes for this exact struct name. Do NOT add",
+        "an explicit `account_discriminator` field here: Anchor already prepends one, and a",
+        "second explicit copy would shift every field after it and break the byte layout",
+        "spl-governance expects.",
+        "",
+        "`voter_weight` is a **running total**, not computed on demand: `weight.rs`'s",
+        "credit_delegate/debit_delegate (called from lock.rs's lock_shares/request_unlock/cancel_unlock)",
+        "keep it in sync with the sum of every Locker currently delegating to this owner."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "realm",
+            "type": "pubkey"
+          },
+          {
+            "name": "governing_token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "governing_token_owner",
+            "docs": [
+              "The voter this record's weight belongs to (the delegate, not necessarily anyone",
+              "who has locked shares themselves)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "voter_weight",
+            "type": "u64"
+          },
+          {
+            "name": "voter_weight_expiry",
+            "docs": [
+              "Must be `Some(current_slot)` whenever this record is used, never left open-ended —",
+              "an unbounded expiry would let a member vote (or propose) using power computed",
+              "before they unlocked. Set only by `update_voter_weight_record`, same-tx as the",
+              "governance action it backs (spl-governance does not CPI the addin, so this record",
+              "must already be fresh when spl-governance reads it)."
+            ],
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "weight_action",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "VoterWeightAction"
+                }
+              }
+            }
+          },
+          {
+            "name": "weight_action_target",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "ANALYST_RECORD_SEED",
+      "type": "bytes",
+      "value": "[97, 110, 97, 108, 121, 115, 116, 95, 114, 101, 99, 111, 114, 100]"
+    },
+    {
+      "name": "LOCKER_ESCROW_SEED",
+      "type": "bytes",
+      "value": "[108, 111, 99, 107, 101, 114, 95, 101, 115, 99, 114, 111, 119]"
+    },
+    {
+      "name": "LOCKER_SEED",
+      "type": "bytes",
+      "value": "[108, 111, 99, 107, 101, 114]"
+    },
+    {
+      "name": "MAX_VWR_SEED",
+      "docs": [
+        "One MaxVoterWeightRecord per (realm, mint) — a realm-wide singleton."
+      ],
+      "type": "bytes",
+      "value": "[109, 97, 120, 95, 118, 111, 116, 101, 114, 95, 119, 101, 105, 103, 104, 116, 95, 114, 101, 99, 111, 114, 100]"
+    },
+    {
+      "name": "REGISTRAR_SEED",
+      "type": "bytes",
+      "value": "[114, 101, 103, 105, 115, 116, 114, 97, 114]"
+    },
+    {
+      "name": "VWR_SEED",
+      "docs": [
+        "Seed convention chosen by Tribe (not protocol-enforced by spl-governance — it only",
+        "deserializes+checks whatever account the caller supplies, seeds are addin-side",
+        "convention only). One VoterWeightRecord per (realm, mint, owner) — \"owner\" here is",
+        "whoever can RECEIVE delegation, not necessarily anyone who has locked shares."
+      ],
+      "type": "bytes",
+      "value": "[118, 111, 116, 101, 114, 95, 119, 101, 105, 103, 104, 116, 95, 114, 101, 99, 111, 114, 100]"
+    }
+  ]
+}
